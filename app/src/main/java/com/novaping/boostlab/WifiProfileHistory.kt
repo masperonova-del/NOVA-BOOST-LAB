@@ -1,6 +1,7 @@
 package com.novaping.boostlab
 
 import android.content.Context
+import java.security.MessageDigest
 
 internal data class WifiProfileSummary(
     val runCount: Int,
@@ -13,6 +14,11 @@ internal data class WifiProfileSummary(
 /** Local-only history for manually labelled Wi-Fi profiles. No SSID or location permission is used. */
 internal class WifiProfileHistory(context: Context) {
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+
+    fun profileIdForSsid(ssid: String): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(ssid.toByteArray(Charsets.UTF_8))
+        return "ssid_" + digest.take(12).joinToString("") { "%02x".format(it) }
+    }
 
     fun record(profileId: String, score: NetworkPathScore) {
         if (score.label != "Wi-Fi" || score.successes < MIN_SUCCESSFUL_PROBES || score.medianMs <= 0L) return
