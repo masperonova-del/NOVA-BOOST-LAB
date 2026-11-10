@@ -111,6 +111,12 @@ private fun OptimizerScreen() {
     var report by remember { mutableStateOf<OptimizationReport?>(null) }
     var networkAvailability by remember { mutableStateOf(optimizer.readNetworkAvailability()) }
 
+    LaunchedEffect(Unit) {
+        if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            refreshConnectedWifi()
+        }
+    }
+
     Surface(modifier = Modifier.fillMaxSize(), color = Navy) {
         Column(
             modifier = Modifier
@@ -167,7 +173,7 @@ private fun OptimizerScreen() {
             }
 
             PanelCard {
-                Text("HISTORIQUE DES TROIS WI-FI", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("HISTORIQUE WI-FI", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(7.dp))
                 Text(
                     "Le profil est identifié par le nom du Wi-Fi connecté lorsque Android autorise sa lecture. Le nom et les mesures restent sur cet appareil.",
