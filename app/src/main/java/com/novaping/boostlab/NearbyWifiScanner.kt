@@ -38,7 +38,10 @@ internal object WifiSecurityClassifier {
             "PSK" in flags -> "WPA/WPA2"
             "WEP" in flags -> "WEP"
             "OWE" in flags -> "WPA3 Enhanced Open"
-            "ESS" in flags || flags.isBlank() -> "Ouvert"
+            flags.isBlank() || (
+                "ESS" in flags &&
+                    listOf("WPA", "RSN", "WEP", "OWE", "SAE", "EAP", "PSK").none { it in flags }
+                ) -> "Ouvert"
             else -> "Autre / non identifié"
         }
     }
