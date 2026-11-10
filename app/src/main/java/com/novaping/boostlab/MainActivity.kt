@@ -93,6 +93,8 @@ private fun OptimizerScreen() {
             wifiDetectionMessage = "Réseau détecté : $ssid. Historique associé automatiquement."
         } else {
             detectedWifiSsid = null
+            activeWifiProfileId = selectedWifiProfile
+            profileHistory = historyStore.summary(selectedWifiProfile)
             wifiDetectionMessage = "Nom Wi-Fi indisponible. Vérifie la connexion Wi-Fi et les services de localisation Android."
         }
     }
@@ -263,6 +265,10 @@ private fun OptimizerScreen() {
                 Spacer(Modifier.height(14.dp))
                 Button(
                     onClick = {
+                        if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                            refreshConnectedWifi()
+                        }
+                        val profileIdForThisRun = activeWifiProfileId
                         scope.launch {
                             running = true
                             report = null
@@ -272,8 +278,8 @@ private fun OptimizerScreen() {
                                 report = result
                                 networkAvailability = optimizer.readNetworkAvailability()
                                 result.measurements.firstOrNull { it.isCurrent && it.label == "Wi-Fi" }?.let { currentWifi ->
-                                    historyStore.record(activeWifiProfileId, currentWifi)
-                                    profileHistory = historyStore.summary(activeWifiProfileId)
+                                    historyStore.record(profileIdForThisRun, currentWifi)
+                                    profileHistory = historyStore.summary(profileIdForThisRun)
                                 }
                                 message = result.message
                                 progress = when {
