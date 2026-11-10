@@ -1,70 +1,256 @@
 package com.novaping.boostlab
 
-import android.content.Intent
-import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.net.InetSocketAddress
-import java.net.Socket
-import kotlin.system.measureTimeMillis
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-private val Navy = Color(0xFF081321)
-private val Panel = Color(0xFF122238)
-private val Blue = Color(0xFF55A7FF)
-private val Green = Color(0xFF43D9A3)
-private val Muted = Color(0xFF9DB0C8)
+private val Navy = Color(0xFF07111F)
+private val Panel = Color(0xFF101F32)
+private val PanelRaised = Color(0xFF172A42)
+private val Blue = Color(0xFF63B3FF)
+private val Mint = Color(0xFF55E0B5)
+private val Muted = Color(0xFF9CAFC5)
+private val Border = Color(0xFF263B55)
+private val Danger = Color(0xFFFF8C8C)
 
 class MainActivity : ComponentActivity() {
-    private var vpnStatus by mutableStateOf("INACTIF")
-    private val vpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == RESULT_OK) {
-            startService(Intent(this, NovaVpnService::class.java))
-            vpnStatus = "AUTORISATION ACCORDÉE"
-        } else {
-            vpnStatus = "AUTORISATION REFUSÉE"
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme(
-                background = Navy, surface = Panel, primary = Blue,
-                secondary = Green, onBackground = Color.White, onSurface = Color.White
-            )) {
-                LabScreen(
-                    vpnStatus = vpnStatus,
-                    onVpn = {
-                        val intent = VpnService.prepare(this)
-                        if (intent != null) vpnPermission.launch(intent)
-                        else {
-                            startService(Intent(this, NovaVpnService::class.java))
-                            vpnStatus = "AUTORISATION DÉJÀ ACCORDÉE"
-                        }
-                    },
-                    onStopVpn = {
-                        stopService(Intent(this, NovaVpnService::class.java))
-                        vpnStatus = "INACTIF"
+            MaterialTheme(
+                colorScheme = darkColorScheme(
+                    background = Navy,
+                    surface = Panel,
+                    surfaceVariant = PanelRaised,
+                    primary = Blue,
+                    secondary = Mint,
+                    onBackground = Color.White,
+                    onSurface = Color.White,
+                    onSurfaceVariant = Muted
+                )
+            ) {
+                LabScreen()
+            }
+        }
+    }
+}
+
+@Composable
+private fun LabScreen() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var network by remember { mutableStateOf(readNetworkSnapshot(context)) }
+    var result by remember { mutableStateOf<NetworkTestResult?>(null) }
+    var isRunning by remember { mutableStateOf(false) }
+    var progress by remember { mutableStateOf("Prêt à mesurer") }
+    var message by remember { mutableStateOf("Lance un diagnostic pour obtenir tes premières mesures.") }
+
+    Surface(modifier = Modifier.fillMaxSize(), color = Navy) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(top = 24.dp, bottom = 30.dp)
+        ) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(color = PanelRaised, shape = RoundedCornerShape(16.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Bolt,
+                            contentDescription = "NOVA",
+                            tint = Blue,
+                            modifier = Modifier.padding(13.dp).size(30.dp)
+                        )
                     }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("NOVA BOOST LAB", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("NETWORK DIAGNOSTICS", color = Muted, fontSize = 10.sp, letterSpacing = 1.5.sp)
+                    }
+                    Surface(color = Color(0xFF173B36), shape = CircleShape) {
+                        Text(
+                            "0.2.0",
+                            color = Mint,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp)
+                        )
+                    }
+                }
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Ta connexion, mesurée clairement.", fontSize = 25.sp, fontWeight = FontWeight.Bold, lineHeight = 31.sp)
+                    Text(
+                        "Un diagnostic en plusieurs essais pour mieux comprendre la réactivité et la stabilité de ton accès Internet.",
+                        color = Muted,
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp
+                    )
+                }
+            }
+
+            item {
+                PanelCard {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(10.dp).background(
+                                if (network.validated) Mint else if (network.hasInternet) Blue else Danger,
+                                CircleShape
+                            )
+                        )
+                        Spacer(Modifier.width(9.dp))
+                        Text("ÉTAT DU RÉSEAU", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            when {
+                                network.validated -> "Internet validé"
+                                network.hasInternet -> "Validation absente"
+                                else -> "À vérifier"
+                            },
+                            color = when {
+                                network.validated -> Mint
+                                network.hasInternet -> Blue
+                                else -> Danger
+                            },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Spacer(Modifier.height(11.dp))
+                    Text(network.label, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "État communiqué par Android. Il ne garantit pas l'accès à chaque serveur.",
+                        color = Muted,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
+                    )
+                }
+            }
+
+            item {
+                PanelCard {
+                    Text("DIAGNOSTIC RÉSEAU", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "5 essais TCP et 5 essais HTTPS. Les résultats affichent la médiane, les extrêmes et les réponses reçues.",
+                        color = Muted,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isRunning = true
+                                result = null
+                                message = "Mesures en cours. Garde l'application ouverte."
+                                progress = "Préparation du diagnostic…"
+                                network = readNetworkSnapshot(context)
+                                try {
+                                    val measured = runNetworkChecks(context) { step -> progress = step }
+                                    result = measured
+                                    network = measured.network
+                                    val total = measured.tcp.successes + measured.https.successes
+                                    message = "Diagnostic terminé : $total réponse(s) sur 10."
+                                    progress = "Terminé"
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (error: Exception) {
+                                    message = "Le diagnostic n'a pas pu se terminer."
+                                    progress = error.message ?: "Erreur inconnue"
+                                } finally {
+                                    isRunning = false
+                                }
+                            }
+                        },
+                        enabled = !isRunning,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(13.dp)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Spacer(Modifier.width(7.dp))
+                        Text(if (isRunning) "MESURES EN COURS…" else "LANCER LE DIAGNOSTIC")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(progress, color = if (isRunning) Blue else Muted, fontSize = 11.sp)
+                    Text(message, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                }
+            }
+
+            item {
+                Text("RÉSULTATS", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    MetricCard("TCP CONNECT", result?.tcp, Modifier.weight(1f))
+                    MetricCard("HTTPS / TLS", result?.https, Modifier.weight(1f))
+                }
+                result?.let {
+                    Spacer(Modifier.height(7.dp))
+                    Text(
+                        "Dernier diagnostic : " + SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+                            .format(Date(it.completedAtMillis)),
+                        color = Muted,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+
+            item {
+                PanelCard {
+                    Text("COMPRENDRE LES MESURES", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Spacer(Modifier.height(9.dp))
+                    ExplanationRow("TCP Connect", "Temps nécessaire pour établir une connexion TCP avec connectivitycheck.gstatic.com.")
+                    HorizontalDivider(color = Border, modifier = Modifier.padding(vertical = 9.dp))
+                    ExplanationRow("HTTPS / TLS", "Durée jusqu'à la réception de la réponse HTTP du serveur de test. DNS, TCP, TLS et serveur peuvent tous influencer ce temps.")
+                    HorizontalDivider(color = Border, modifier = Modifier.padding(vertical = 9.dp))
+                    ExplanationRow("Médiane", "Valeur centrale des essais réussis. Elle est moins sensible qu'une moyenne à un essai exceptionnellement lent.")
+                }
+            }
+
+            item {
+                Surface(color = PanelRaised, shape = RoundedCornerShape(15.dp)) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("LIMITES IMPORTANTES", color = Blue, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        Text(
+                            "Ces mesures ne sont pas le ping UDP de Call of Duty Mobile. Elles ne prouvent pas qu'une connexion est accélérée. Aucun VPN, relais distant ou changement de routage n'est activé dans cette version.",
+                            color = Muted,
+                            fontSize = 11.sp,
+                            lineHeight = 17.sp
+                        )
+                    }
+                }
+            }
+
+            item {
+                Text(
+                    "NOVA BOOST LAB 0.2.0 • DIAGNOSTIC UNIQUEMENT",
+                    color = Muted,
+                    fontSize = 9.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }
@@ -72,156 +258,63 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun LabScreen(vpnStatus: String, onVpn: () -> Unit, onStopVpn: () -> Unit) {
-    var running by remember { mutableStateOf(false) }
-    var tcpMs by remember { mutableStateOf<Long?>(null) }
-    var httpsMs by remember { mutableStateOf<Long?>(null) }
-    var testMessage by remember { mutableStateOf("Aucun test effectué") }
-    val scope = rememberCoroutineScope()
-
-    Surface(Modifier.fillMaxSize(), color = Navy) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(top = 24.dp, bottom = 28.dp)
-        ) {
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(color = Color(0xFF173B63), shape = RoundedCornerShape(14.dp)) {
-                        Icon(Icons.Default.Bolt, null, tint = Blue, modifier = Modifier.padding(12.dp).size(28.dp))
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("NOVA BOOST LAB", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
-                        Text("NETWORK ROUTING EXPERIMENTAL", color = Muted, fontSize = 10.sp, letterSpacing = 1.2.sp)
-                    }
-                    Surface(color = Color(0xFF174A3C), shape = RoundedCornerShape(50)) {
-                        Text("LAB", color = Green, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), fontSize = 11.sp)
-                    }
-                }
-            }
-            item {
-                Text("MESURES RÉSEAU", color = Muted, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    MetricCard("TCP CONNECT", tcpMs?.let { "$it ms" } ?: "—", Modifier.weight(1f))
-                    MetricCard("HTTPS/TLS", httpsMs?.let { "$it ms" } ?: "—", Modifier.weight(1f))
-                }
-                Text("Ces mesures évaluent l'accès aux services de test, pas le ping UDP de COD Mobile.", color = Muted, fontSize = 11.sp)
-            }
-            item {
-                PanelCard {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Route, null, tint = Blue)
-                        Spacer(Modifier.width(8.dp))
-                        Text("COMPARATEUR DE ROUTES", fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    RouteLine("Connexion directe", tcpMs?.let { "$it ms TCP" } ?: "En attente", Blue)
-                    RouteLine("Relais NOVA", "Non configuré", Muted)
-                    Text("Aucun relais n'est encore déployé : aucune route alternative réelle n'est simulée.", color = Muted, fontSize = 11.sp)
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                running = true
-                                testMessage = "Mesures en cours…"
-                                val result = withContext(Dispatchers.IO) { runNetworkChecks() }
-                                tcpMs = result.first
-                                httpsMs = result.second
-                                testMessage = if (result.first != null || result.second != null) "Test terminé" else "Échec des mesures — vérifier Internet"
-                                running = false
-                            }
-                        },
-                        enabled = !running,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.PlayArrow, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text(if (running) "TEST EN COURS…" else "LANCER LES TESTS")
-                    }
-                    Text(testMessage, color = Muted, fontSize = 12.sp)
-                }
-            }
-            item {
-                PanelCard {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Shield, null, tint = Green)
-                        Spacer(Modifier.width(8.dp))
-                        Text("VPN CONTROL", fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("État du VPN", color = Muted)
-                        Text(vpnStatus, color = if (vpnStatus == "INACTIF") Muted else Green, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    }
-                    Text("Le service est un squelette de démonstration : il ne transporte pas encore le trafic et ne fournit aucun relais.", color = Muted, fontSize = 11.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = onVpn, modifier = Modifier.weight(1f)) { Text("AUTORISER VPN") }
-                        OutlinedButton(onClick = onStopVpn, modifier = Modifier.weight(1f)) { Text("ARRÊTER") }
-                    }
-                }
-            }
-            item {
-                PanelCard {
-                    Text("ÉTAPES SUIVANTES", fontWeight = FontWeight.Bold)
-                    Text("1. Ajouter des tests de routes/hops compatibles avec le réseau.\n2. Déployer un relais NOVA réel.\n3. Implémenter le tunnel VPN complet et chiffré.\n4. Comparer les résultats directs et via relais.", color = Muted, fontSize = 12.sp, lineHeight = 19.sp)
-                }
-            }
-            item {
-                Text("NOVA BOOST LAB 0.1.0 • APPLICATION DE TEST INDÉPENDANTE", color = Muted, fontSize = 9.sp)
-            }
-        }
-    }
-}
-
-@Composable
-private fun MetricCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Surface(modifier, color = Panel, shape = RoundedCornerShape(16.dp)) {
-        Column(Modifier.padding(15.dp)) {
-            Text(label, color = Muted, fontSize = 10.sp)
-            Spacer(Modifier.height(6.dp))
-            Text(value, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+private fun MetricCard(label: String, stats: ProbeStats?, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        color = Panel,
+        shape = RoundedCornerShape(16.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Border)
+    ) {
+        Column(Modifier.padding(13.dp)) {
+            Text(label, color = Muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(9.dp))
+            Text(
+                stats?.medianMs?.let(::formatMillis) ?: "—",
+                color = Color.White,
+                fontSize = 23.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text("MÉDIANE", color = Muted, fontSize = 9.sp)
+            Spacer(Modifier.height(11.dp))
+            HorizontalDivider(color = Border)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                if (stats == null) "Aucun test" else "${stats.successes}/${stats.attempts} réponses",
+                color = if (stats != null && stats.successes == stats.attempts) Mint else Muted,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                if (stats == null) "Min —  •  Max —" else "Min ${formatMillis(stats.minMs)}  •  Max ${formatMillis(stats.maxMs)}",
+                color = Muted,
+                fontSize = 9.sp
+            )
         }
     }
 }
 
 @Composable
 private fun PanelCard(content: @Composable ColumnScope.() -> Unit) {
-    Surface(color = Panel, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(
+        color = Panel,
+        shape = RoundedCornerShape(18.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Column(Modifier.padding(16.dp), content = content)
     }
 }
 
 @Composable
-private fun RouteLine(name: String, value: String, color: Color) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(8.dp).background(color, RoundedCornerShape(50)))
-        Spacer(Modifier.width(9.dp))
-        Text(name, Modifier.weight(1f), fontSize = 13.sp)
-        Text(value, color = color, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+private fun ExplanationRow(title: String, detail: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+        Text(detail, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
     }
 }
 
-private fun runNetworkChecks(): Pair<Long?, Long?> {
-    val tcp = runCatching {
-        var elapsed = 0L
-        Socket().use { socket ->
-            elapsed = measureTimeMillis {
-                socket.connect(InetSocketAddress("connectivitycheck.gstatic.com", 443), 3500)
-            }
-        }
-        elapsed
-    }.getOrNull()
-
-    val https = runCatching {
-        var elapsed = 0L
-        val connection = java.net.URL("https://www.google.com/generate_204").openConnection() as java.net.HttpURLConnection
-        connection.connectTimeout = 3500
-        connection.readTimeout = 3500
-        elapsed = measureTimeMillis {
-            connection.getInputStream().use { it.readBytes() }
-        }
-        connection.disconnect()
-        elapsed
-    }.getOrNull()
-    return tcp to https
+private fun formatMillis(value: Long?): String = when {
+    value == null -> "—"
+    value < 1L -> "<1 ms"
+    else -> "$value ms"
 }
