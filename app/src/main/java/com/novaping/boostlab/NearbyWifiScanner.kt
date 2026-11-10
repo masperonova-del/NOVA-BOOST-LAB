@@ -32,6 +32,10 @@ internal data class WifiScanReport(
 internal object WifiSecurityClassifier {
     fun classify(capabilities: String): String {
         val flags = capabilities.uppercase()
+        val capabilityTags = Regex("""\\[([^\\]]+)]""")
+            .findAll(flags)
+            .map { it.groupValues[1].trim() }
+            .toSet()
         return when {
             "SAE" in flags -> "WPA3"
             "EAP" in flags -> "Entreprise"
@@ -39,8 +43,8 @@ internal object WifiSecurityClassifier {
             "WEP" in flags -> "WEP"
             "OWE" in flags -> "WPA3 Enhanced Open"
             flags.isBlank() || (
-                "ESS" in flags &&
-                    listOf("WPA", "RSN", "WEP", "OWE", "SAE", "EAP", "PSK").none { it in flags }
+                "ESS" in capabilityTags &&
+                    capabilityTags.all { it == "ESS" || it == "WPS" }
                 ) -> "Ouvert"
             else -> "Autre / non identifié"
         }
