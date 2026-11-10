@@ -78,6 +78,8 @@ private fun OptimizerScreen() {
                 val scan = nearbyWifiScanner.scan()
                 nearbyWifiNetworks = scan.networks
                 nearbyWifiMessage = scan.message
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 nearbyWifiMessage = "Scan impossible : ${error.message ?: "erreur inconnue"}."
             } finally {
