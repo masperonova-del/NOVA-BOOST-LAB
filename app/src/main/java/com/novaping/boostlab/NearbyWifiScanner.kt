@@ -29,6 +29,36 @@ internal data class WifiScanReport(
     val message: String
 )
 
+internal object WifiSecurityClassifier {
+    fun classify(capabilities: String): String {
+        val flags = capabilities.uppercase()
+        return when {
+            "SAE" in flags -> "WPA3"
+            "EAP" in flags -> "Entreprise"
+            "PSK" in flags -> "WPA/WPA2"
+            "WEP" in flags -> "WEP"
+            "OWE" in flags -> "WPA3 Enhanced Open"
+            "ESS" in flags || flags.isBlank() -> "Ouvert"
+            else -> "Autre / non identifié"
+        }
+    }
+}
+
+internal object WifiScanStatus {
+    fun fromBroadcast(resultsUpdated: Boolean): String =
+        if (resultsUpdated) {
+            "Recherche actualisée : réseaux Wi-Fi détectés à proximité."
+        } else {
+            "Android a renvoyé des résultats en cache ; ils peuvent ne pas refléter l'état actuel."
+        }
+
+    fun startRejected(): String =
+        "Android a limité ou refusé une nouvelle recherche. Les résultats éventuellement affichés proviennent du cache."
+
+    fun timedOut(): String =
+        WifiScanStatus.timedOut()
+}
+
 internal object WifiSignalRanker {
     fun rank(networks: List<NearbyWifiNetwork>): List<NearbyWifiNetwork> {
         return networks
@@ -86,12 +116,7 @@ internal class NearbyWifiScanner(context: Context) {
             receiver = object : BroadcastReceiver() {
                 override fun onReceive(context: Context?, intent: Intent?) {
                     val updated = intent?.getBooleanExtra(WifiManager.EXTRA_RESULTS_UPDATED, false) == true
-                    val message = if (updated) {
-                        "Recherche actualisée : réseaux Wi-Fi détectés à proximité."
-                    } else {
-                        "Android a renvoyé des résultats en cache ; ils peuvent ne pas refléter l'état actuel."
-                    }
-                    complete(WifiScanReport(readResults(), updated, message))
+                    complete(WifiScanReport(readResults(), updated, WifiScanStatus.fromBroadcast(updated)))
                 }
             }
 
@@ -110,7 +135,7 @@ internal class NearbyWifiScanner(context: Context) {
                     complete(WifiScanReport(
                         readResults(),
                         false,
-                        "Android a limité ou refusé une nouvelle recherche. Les résultats éventuellement affichés proviennent du cache."
+                        WifiScanStatus.startRejected()
                     ))
                 } else {
                     timeoutRunnable?.let { handler.postDelayed(it, SCAN_TIMEOUT_MS) }
@@ -133,14 +158,7 @@ internal class NearbyWifiScanner(context: Context) {
         return WifiSignalRanker.rank(results.mapNotNull { result ->
             val ssid = result.SSID?.trim().orEmpty()
             if (ssid.isBlank() || ssid == "<unknown ssid>") return@mapNotNull null
-            val capabilities = result.capabilities.orEmpty().uppercase()
-            val security = when {
-                "SAE" in capabilities -> "WPA3"
-                "EAP" in capabilities -> "Entreprise"
-                "PSK" in capabilities -> "WPA/WPA2"
-                "WEP" in capabilities -> "WEP"
-                else -> "Ouvert / non identifié"
-            }
+            val security = WifiSecurityClassifier.classify(result.capabilities.orEmpty())
             NearbyWifiNetwork(ssid, result.level, result.frequency, security)
         })
     }
