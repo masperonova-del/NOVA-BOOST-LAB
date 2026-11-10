@@ -67,6 +67,30 @@ private fun OptimizerScreen() {
     val scope = rememberCoroutineScope()
     val optimizer = remember(context) { NetworkPathOptimizer(context.applicationContext) }
     val historyStore = remember(context) { WifiProfileHistory(context.applicationContext) }
+    val nearbyWifiScanner = remember(context) { NearbyWifiScanner(context.applicationContext) }
+    var nearbyWifiNetworks by remember { mutableStateOf<List<NearbyWifiNetwork>>(emptyList()) }
+    var nearbyWifiMessage by remember { mutableStateOf("Aucune recherche effectuée.") }
+    var scanningNearbyWifi by remember { mutableStateOf(false) }
+    val scanNearbyWifi: () -> Unit = {
+        scope.launch {
+            scanningNearbyWifi = true
+            try {
+                val scan = nearbyWifiScanner.scan()
+                nearbyWifiNetworks = scan.networks
+                nearbyWifiMessage = scan.message
+            } catch (error: Exception) {
+                nearbyWifiMessage = "Scan impossible : ${error.message ?: "erreur inconnue"}."
+            } finally {
+                scanningNearbyWifi = false
+            }
+        }
+    }
+    val nearbyWifiPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true) scanNearbyWifi()
+        else nearbyWifiMessage = "Autorisation refusée : Android ne permet pas d'afficher les réseaux Wi-Fi à proximité."
+    }
     var detectedWifiSsid by remember { mutableStateOf<String?>(null) }
     var wifiDetectionMessage by remember { mutableStateOf("Le réseau Wi-Fi connecté sera détecté automatiquement.") }
     var activeWifiProfileId by remember { mutableStateOf<String?>(null) }
@@ -235,6 +259,51 @@ private fun OptimizerScreen() {
 
             PanelCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("RÉSEAUX WI-FI À PROXIMITÉ", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text("SCAN", color = Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    "Recherche les points d’accès visibles autour du téléphone. Le classement repose uniquement sur la puissance du signal radio, pas sur le débit, le ping ou la qualité Internet.",
+                    color = Muted, fontSize = 11.sp, lineHeight = 16.sp
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = {
+                        if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                            scanNearbyWifi()
+                        } else {
+                            nearbyWifiPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                        }
+                    },
+                    enabled = !scanningNearbyWifi && !running,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(if (scanningNearbyWifi) "RECHERCHE EN COURS…" else "RECHERCHER LES RÉSEAUX AUTOUR")
+                }
+                if (scanningNearbyWifi) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                Text(nearbyWifiMessage, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                if (nearbyWifiNetworks.isEmpty()) {
+                    Text("Aucun réseau Wi-Fi visible retourné par Android.", color = Muted, fontSize = 11.sp)
+                } else {
+                    Spacer(Modifier.height(6.dp))
+                    nearbyWifiNetworks.forEach { candidate ->
+                        NearbyWifiRow(candidate)
+                        HorizontalDivider(color = Border)
+                    }
+                }
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    "Les résultats dépendent des restrictions de scan Android et peuvent être mis en cache. NOVA BOOST LAB ne tente pas de se connecter à ces réseaux.",
+                    color = Muted, fontSize = 10.sp, lineHeight = 15.sp
+                )
+            }
+
+            PanelCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Tune, contentDescription = null, tint = Blue)
                     Spacer(Modifier.width(8.dp))
                     Text("OPTIMISATION ACTIVE", fontWeight = FontWeight.Bold, fontSize = 13.sp)
@@ -376,6 +445,35 @@ private fun OptimizerScreen() {
                 "NOVA BOOST LAB • MOTEUR DE SÉLECTION DE CHEMIN",
                 color = Muted, fontSize = 9.sp, modifier = Modifier.align(Alignment.CenterHorizontally)
             )
+        }
+    }
+}
+
+@Composable
+private fun NearbyWifiRow(network: NearbyWifiNetwork) {
+    val signalLabel = when {
+        network.signalDbm >= -50 -> "Excellent"
+        network.signalDbm >= -60 -> "Très bon"
+        network.signalDbm >= -67 -> "Bon"
+        network.signalDbm >= -75 -> "Moyen"
+        else -> "Faible"
+    }
+    val band = when (network.frequencyMhz) {
+        in 2400..2500 -> "2,4 GHz"
+        in 4900..5900 -> "5 GHz"
+        in 5925..7125 -> "6 GHz"
+        else -> "${network.frequencyMhz} MHz"
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(network.ssid, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text("$band • ${network.security}", color = Muted, fontSize = 10.sp)
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text("$signalLabel • ${network.signalDbm} dBm", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
