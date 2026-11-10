@@ -214,7 +214,7 @@ private fun runNetworkChecks(): Pair<Long?, Long?> {
 
     val https = runCatching {
         var elapsed = 0L
-        val connection = java.net.URL("https://www.google.com/generate_204").openConnection()
+        val connection = java.net.URL("https://www.google.com/generate_204").openConnection() as java.net.HttpURLConnection
         connection.connectTimeout = 3500
         connection.readTimeout = 3500
         elapsed = measureTimeMillis {
