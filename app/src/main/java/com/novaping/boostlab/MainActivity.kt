@@ -64,6 +64,7 @@ private fun LabScreen() {
     val scope = rememberCoroutineScope()
     var network by remember { mutableStateOf(readNetworkSnapshot(context)) }
     var result by remember { mutableStateOf<NetworkTestResult?>(null) }
+    var assessment by remember { mutableStateOf<OptimizerAssessment?>(null) }
     var isRunning by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf("Prêt à mesurer") }
     var message by remember { mutableStateOf("Lance un diagnostic pour obtenir tes premières mesures.") }
@@ -91,7 +92,7 @@ private fun LabScreen() {
                     }
                     Surface(color = Color(0xFF173B36), shape = CircleShape) {
                         Text(
-                            "0.2.0",
+                            "0.3.0",
                             color = Mint,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
@@ -167,12 +168,14 @@ private fun LabScreen() {
                             scope.launch {
                                 isRunning = true
                                 result = null
+                                assessment = null
                                 message = "Mesures en cours. Garde l'application ouverte."
                                 progress = "Préparation du diagnostic…"
                                 network = readNetworkSnapshot(context)
                                 try {
                                     val measured = runNetworkChecks(context) { step -> progress = step }
                                     result = measured
+                                    assessment = SmartNetworkOptimizer.assess(measured)
                                     network = measured.network
                                     val total = measured.tcp.successes + measured.https.successes
                                     message = "Diagnostic terminé : $total réponse(s) sur 10."
@@ -219,6 +222,10 @@ private fun LabScreen() {
             }
 
             item {
+                assessment?.let { OptimizerCard(it) }
+            }
+
+            item {
                 PanelCard {
                     Text("COMPRENDRE LES MESURES", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     Spacer(Modifier.height(9.dp))
@@ -235,7 +242,7 @@ private fun LabScreen() {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("LIMITES IMPORTANTES", color = Blue, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                         Text(
-                            "Ces mesures ne sont pas le ping UDP de Call of Duty Mobile. Elles ne prouvent pas qu'une connexion est accélérée. Aucun VPN, relais distant ou changement de routage n'est activé dans cette version.",
+                            "Ces mesures ne sont pas le ping UDP de Call of Duty Mobile. Le moteur 0.3 formule des recommandations à partir des sondes ; il ne modifie pas le Wi‑Fi, les données mobiles, le DNS ou le routage, et n'active aucun VPN ni relais.",
                             color = Muted,
                             fontSize = 11.sp,
                             lineHeight = 17.sp
@@ -246,7 +253,7 @@ private fun LabScreen() {
 
             item {
                 Text(
-                    "NOVA BOOST LAB 0.2.0 • DIAGNOSTIC UNIQUEMENT",
+                    "NOVA BOOST LAB 0.3.0 • OPTIMISATION CONSULTATIVE",
                     color = Muted,
                     fontSize = 9.sp,
                     textAlign = TextAlign.Center,
@@ -254,6 +261,42 @@ private fun LabScreen() {
                 )
             }
         }
+    }
+}
+
+
+@Composable
+private fun OptimizerCard(assessment: OptimizerAssessment) {
+    val accent = when (assessment.state) {
+        OptimizerState.STABLE -> Mint
+        OptimizerState.SLOW_RESPONSES -> Blue
+        OptimizerState.UNSTABLE -> Danger
+        OptimizerState.NO_INTERNET,
+        OptimizerState.NOT_VALIDATED,
+        OptimizerState.INSUFFICIENT_DATA -> Muted
+    }
+
+    PanelCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("SMART NETWORK OPTIMIZER", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Spacer(Modifier.weight(1f))
+            Text("0.3", color = accent, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(assessment.title, color = accent, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(5.dp))
+        Text(assessment.explanation, color = Muted, fontSize = 11.sp, lineHeight = 17.sp)
+        Spacer(Modifier.height(13.dp))
+        Text("DÉCISION DU MOTEUR", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        Text(assessment.actionLabel, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text(assessment.recommendation, color = Muted, fontSize = 11.sp, lineHeight = 17.sp)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Mode consultatif : aucune modification automatique du réseau.",
+            color = Blue,
+            fontSize = 10.sp,
+            lineHeight = 15.sp
+        )
     }
 }
 

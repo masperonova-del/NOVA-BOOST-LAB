@@ -1,53 +1,73 @@
-# NOVA BOOST LAB 0.2.0
+# NOVA BOOST LAB 0.3.0 — Smart Network Optimizer
 
-Application Android indépendante de diagnostic réseau. Cette version mesure des connexions de test ; elle ne prétend pas accélérer le réseau et ne modifie pas le routage du téléphone.
+Application Android indépendante de diagnostic et d'aide à la décision réseau.
 
-## Ce qui change en 0.2.0
+La version 0.3 ajoute un moteur local qui interprète les mesures TCP et HTTPS de la 0.2 et produit une recommandation explicable. Il s'agit d'une optimisation **consultative** : le moteur n'applique aucune modification au réseau Android.
 
-- Cinq essais TCP au lieu d'une mesure isolée.
-- Cinq essais HTTPS/TLS au lieu d'une mesure isolée.
-- Médiane, minimum, maximum et nombre de réponses reçues pour chaque série.
-- Détection du transport réseau actif (Wi-Fi, données mobiles, Ethernet, VPN externe ou autre).
-- Affichage de l'état de validation Internet communiqué par Android.
-- Délais de connexion et de lecture limités, fermeture systématique des connexions HTTP.
-- Suppression du faux contrôle VPN : le service précédent s'arrêtait immédiatement et ne créait aucun tunnel.
-- Icône de lancement dédiée et version d'application mise à jour.
-- Tests unitaires des calculs de médiane.
+## Feuille de route officielle
 
-## Comprendre les mesures
+| Version | Objectif |
+| --- | --- |
+| 0.1 | Moteur indépendant initial |
+| 0.2 | Fiabilisation et compilation |
+| **0.3** | **Smart Network Optimizer** |
+| 0.4 | Gaming Traffic Analyzer |
+| 0.5 | Infrastructure Relay |
+| 0.6 | Tunnel et routage alternatif |
+| 0.7 | Moteur BOOST central |
+| 1.0 | Intégration complète dans l'application cible |
 
-- **TCP Connect** : temps nécessaire pour ouvrir une connexion TCP vers connectivitycheck.gstatic.com:443. La résolution du nom peut influencer ce temps.
-- **HTTPS/TLS** : durée jusqu'à l'obtention de la réponse HTTP de www.google.com/generate_204. Ce temps inclut plusieurs étapes (DNS, TCP, TLS et réponse du serveur).
-- **Médiane** : valeur centrale des réponses réussies. Les essais échoués sont comptés séparément et ne sont pas transformés en latence artificielle.
+## Ce qui entre dans la 0.3
 
-## Limites assumées
+- Réutilisation des mesures TCP et HTTPS de la 0.2.
+- Vérification de la disponibilité et de la validation Internet communiquées par Android.
+- Contrôle du volume minimal de mesures valides.
+- Analyse du taux de réussite de chaque série.
+- Analyse de la dispersion des temps de réponse.
+- Classification : absence d'accès, réseau non validé, données insuffisantes, connexion irrégulière, réponses lentes ou profil cohérent.
+- Recommandation lisible et explicable affichée dans l'application.
+- Tests unitaires déterministes du moteur de décision.
 
-- Ces tests ne mesurent pas le ping UDP réel d'un match Call of Duty Mobile.
-- Le test HTTPS n'est pas une mesure pure de latence réseau.
-- Le résultat dépend des serveurs de test, de la couverture, du fournisseur d'accès, du DNS et de la charge momentanée.
-- Android peut signaler un accès Internet validé sans garantir que chaque service distant fonctionne.
-- Aucun tunnel VPN, relais NOVA, proxy, chiffrement de trafic ou changement de route n'est inclus.
-- Aucun résultat ne peut garantir une baisse du ping en jeu.
+## Seuils heuristiques initiaux
+
+Ces seuils servent uniquement à établir une première logique testable. Ils devront être calibrés avec des mesures répétées sur des appareils et des réseaux réels.
+
+- Au moins 3 réponses valides dans chacune des séries TCP et HTTPS.
+- Au moins 80 % de réussite dans chaque série.
+- Dispersion (maximum - minimum) / médiane supérieure à 0,50 : profil irrégulier.
+- Médiane TCP d'au moins 300 ms ou médiane HTTPS d'au moins 1 500 ms : réponses lentes sur les sondes.
+
+La mesure HTTPS inclut plusieurs étapes (DNS, TCP, TLS et réponse du serveur). Elle ne constitue pas une mesure pure de latence. La médiane TCP et la médiane HTTPS restent donc deux indicateurs distincts.
+
+## Ce qui est explicitement exclu de la 0.3
+
+- Aucune activation ou création de VPN.
+- Aucun tunnel, proxy ou relais distant.
+- Aucun changement de route, d'APN ou de DNS.
+- Aucun basculement automatique entre Wi-Fi et données mobiles.
+- Aucune modification des paramètres système Android.
+- Aucune interception ou analyse du trafic privé d'un jeu.
+- Aucune mesure présentée comme le ping UDP réel de Call of Duty Mobile.
+- Aucune promesse de réduction du ping ou d'augmentation du débit.
+
+Le moteur peut conseiller une comparaison manuelle des accès ; il ne peut pas la réaliser à la place de l'utilisateur dans cette version.
+
+## Tests de projection
+
+Le plan détaillé est dans docs/PROJECTION_TESTS_0.3.md.
+
+Exécution locale :
+
+    gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
+
+Le workflow GitHub Actions exécute les tests unitaires avant de produire l'APK debug.
 
 ## Compilation
 
 Configuration : JDK 17, Android SDK 35, Gradle 8.9.
 
-Depuis Android Studio : ouvrir le dossier du projet, synchroniser Gradle, puis exécuter la configuration app.
-
-Commande disponible dans un environnement avec Gradle installé :
-
-    gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
-
 APK debug :
 
     app/build/outputs/apk/debug/app-debug.apk
 
-Le workflow GitHub Actions exécute les tests unitaires avant de générer l'APK.
-
-## Suite envisagée
-
-1. Ajouter un historique local des diagnostics.
-2. Permettre des tests vers plusieurs destinations configurables et clairement identifiées.
-3. Étudier un protocole de mesure UDP contrôlé, sans le confondre avec le trafic réel du jeu.
-4. Concevoir l'architecture d'un relais uniquement après définition d'un serveur, d'un protocole, de la sécurité et de mesures comparatives crédibles.
+Une compilation réussie et des tests unitaires réussis ne remplacent pas un essai sur téléphone. Les performances réelles, la couverture radio, les serveurs de test et les conditions de jeu restent à vérifier sur appareil.
