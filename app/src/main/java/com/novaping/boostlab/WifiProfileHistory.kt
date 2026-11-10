@@ -11,13 +11,13 @@ internal data class WifiProfileSummary(
     val lastJitterMs: Long?
 )
 
-/** Local-only history for manually labelled Wi-Fi profiles. No SSID or location permission is used. */
+/** Local-only Wi-Fi history. SSIDs are converted to stable local hashes before being used as preference keys. */
 internal class WifiProfileHistory(context: Context) {
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     fun profileIdForSsid(ssid: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(ssid.toByteArray(Charsets.UTF_8))
-        return "ssid_" + digest.take(12).joinToString("") { "%02x".format(it) }
+        return "ssid_" + digest.take(12).joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
 
     fun record(profileId: String, score: NetworkPathScore) {
