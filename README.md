@@ -34,6 +34,20 @@ Le moteur ne force pas l'activation du Wi-Fi ou des données mobiles. Il ne comp
 
 Les mesures HTTPS comprennent la résolution DNS, l'établissement TCP, TLS et la réponse serveur. Elles ne sont ni un ping UDP ni une garantie de performance en jeu.
 
+## Prototype expérimental — découverte Wi-Fi à proximité
+
+La branche `feature/wifi-neighbor-discovery` ajoute un scan manuel des points d'accès Wi-Fi visibles :
+
+- Affichage des SSID diffusés, de la puissance reçue (dBm), de la bande de fréquence et du type de sécurité annoncé.
+- Classement par puissance du signal, avec une seule entrée par SSID (point d'accès au signal le plus fort).
+- Résultats explicitement signalés comme actualisés ou potentiellement issus du cache Android.
+- Autorisation de localisation précise et services de localisation requis selon les règles Android ; aucune coordonnée GPS n'est lue.
+- Aucun BSSID n'est affiché ou conservé ; aucun réseau n'est rejoint automatiquement.
+
+**Limite de mesure :** le scan radio ne permet pas de connaître le ping, le débit, la congestion réelle ni la qualité Internet d'un réseau auquel le téléphone n'est pas connecté. Il sert uniquement à repérer et comparer la puissance des signaux reçus. La connexion à un autre réseau reste une action de l'utilisateur.
+
+Cette évolution est isolée sur une branche expérimentale et ne modifie pas la version publiée 0.3.0 ni la feuille de route officielle.
+
 ## Tests et compilation
 
 Configuration : JDK 17, Android SDK 35, Gradle 8.9.
