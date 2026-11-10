@@ -249,6 +249,31 @@ private fun OptimizerScreen() {
                     "Historique local limité aux 12 dernières mesures par profil. Il reste sur cet appareil.",
                     color = Muted, fontSize = 10.sp
                 )
+                if (detectedWifiSsid != null) {
+                    Spacer(Modifier.height(12.dp))
+                    Divider(color = Border)
+                    Spacer(Modifier.height(8.dp))
+                    Text("ANCIENS HISTORIQUES MANUELS — CONSERVÉS", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Ces anciennes mesures ne sont ni supprimées ni mélangées aux profils automatiques. Tu peux encore les consulter ici.",
+                        color = Muted, fontSize = 10.sp, lineHeight = 15.sp
+                    )
+                    wifiProfiles.forEach { (legacyId, legacyLabel) ->
+                        val legacySummary = historyStore.summary(legacyId)
+                        if (legacySummary.runCount > 0) {
+                            Spacer(Modifier.height(7.dp))
+                            Text(legacyLabel, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "${legacySummary.runCount} tests • médiane ${legacySummary.medianMs} ms • dispersion ${legacySummary.jitterMs} ms",
+                                color = Muted, fontSize = 10.sp
+                            )
+                            Text(
+                                "Dernier test : ${legacySummary.lastMedianMs} ms • dispersion ${legacySummary.lastJitterMs} ms",
+                                color = Muted, fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
             }
 
             PanelCard {
