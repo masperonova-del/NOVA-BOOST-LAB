@@ -19,10 +19,13 @@ internal data class NetworkPathScore(
     val successes: Int,
     val attempts: Int,
     val isCurrent: Boolean
-)
+) {
+    // Median absolute deviation is a stability penalty, not extra measured latency.
+    val stabilityAdjustedMs: Long
+        get() = medianMs + (jitterMs.coerceAtLeast(0L) * 2L)
+}
 
 internal data class NetworkPathDecision(val selected: NetworkPathScore, val reason: String)
-
 internal data class TransportAvailability(val detected: Boolean, val validated: Boolean)
 internal data class NetworkAvailability(
     val wifi: TransportAvailability,
@@ -36,24 +39,35 @@ internal object NetworkPathSelector {
 
     fun select(candidates: List<NetworkPathScore>): NetworkPathDecision? {
         val eligible = candidates.filter {
-            it.medianMs > 0L && it.attempts >= 1 &&
+            it.medianMs > 0L && it.jitterMs >= 0L &&
+                it.attempts >= MIN_SUCCESSFUL_PROBES &&
                 it.successes >= MIN_SUCCESSFUL_PROBES && it.successes <= it.attempts
         }
         if (eligible.isEmpty()) return null
 
-        val fastest = eligible.minByOrNull { it.medianMs } ?: return null
+        val fastest = eligible.minByOrNull { it.stabilityAdjustedMs } ?: return null
         val current = eligible.firstOrNull { it.isCurrent }
         if (current == null) {
-            return NetworkPathDecision(fastest, "Aucun chemin courant mesurable : sélection du meilleur chemin validé.")
+            return NetworkPathDecision(
+                fastest,
+                "Aucun chemin courant mesurable : sélection du meilleur score combinant médiane et stabilité."
+            )
         }
         if (fastest.networkId == current.networkId) {
-            return NetworkPathDecision(current, "Le chemin courant est déjà le meilleur parmi les chemins mesurés.")
+            return NetworkPathDecision(current, "Le chemin courant présente déjà le meilleur score de latence et de stabilité.")
         }
-        val requiredGain = current.medianMs * (1.0 - MIN_IMPROVEMENT)
-        if (fastest.medianMs.toDouble() > requiredGain) {
-            return NetworkPathDecision(current, "L'autre chemin n'apporte pas au moins 15 % de gain mesuré : conservation du chemin courant.")
+
+        val requiredGain = current.stabilityAdjustedMs * (1.0 - MIN_IMPROVEMENT)
+        if (fastest.stabilityAdjustedMs.toDouble() > requiredGain) {
+            return NetworkPathDecision(
+                current,
+                "L'alternative n'apporte pas au moins 15 % de gain sur le score combinant latence et stabilité : chemin courant conservé."
+            )
         }
-        return NetworkPathDecision(fastest, "Le chemin sélectionné présente au moins 15 % de gain sur la médiane des sondes.")
+        return NetworkPathDecision(
+            fastest,
+            "Le chemin alternatif apporte au moins 15 % de gain sur le score combinant latence et stabilité."
+        )
     }
 }
 
@@ -69,7 +83,6 @@ internal data class OptimizationReport(
 /** Selects and verifies a network for NOVA BOOST LAB's process only. */
 internal class NetworkPathOptimizer(context: Context) {
     private val manager = context.getSystemService(ConnectivityManager::class.java)
-    // Keep track of this process's own binding while the optimizer instance lives.
     private var processBoundNetwork: Network? = null
 
     fun readNetworkAvailability(): NetworkAvailability {
@@ -80,8 +93,7 @@ internal class NetworkPathOptimizer(context: Context) {
         }
         fun status(transport: Int): TransportAvailability {
             val matching = cm.allNetworks.mapNotNull { network ->
-                cm.getNetworkCapabilities(network)
-                    ?.takeIf { it.hasTransport(transport) }
+                cm.getNetworkCapabilities(network)?.takeIf { it.hasTransport(transport) }
             }
             return TransportAvailability(
                 detected = matching.isNotEmpty(),
@@ -100,26 +112,25 @@ internal class NetworkPathOptimizer(context: Context) {
 
     suspend fun optimizeProcessPath(onProgress: (String) -> Unit): OptimizationReport {
         val cm = manager ?: return failure("Gestionnaire réseau indisponible.")
-
-        // A process binding takes precedence over Android's default active network.
         val processBound = processBoundNetwork
         val defaultNetwork = cm.activeNetwork
         val current = processBound ?: defaultNetwork
 
-        // Do not silently route around an active VPN or interfere with its policy.
         val vpnIsActive = listOfNotNull(processBound, defaultNetwork).any { network ->
-            cm.getNetworkCapabilities(network)
-                ?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+            cm.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
         }
         if (vpnIsActive) {
             return failure("Un VPN est actif. Optimisation suspendue pour ne pas contourner son routage.")
         }
 
+        // Only networks currently available to this app can be probed.
+        // Saved Wi-Fi networks that are not connected are not candidates.
         val candidates = cm.allNetworks.mapNotNull { network ->
             val caps = cm.getNetworkCapabilities(network) ?: return@mapNotNull null
             if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
                 !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) ||
-                caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return@mapNotNull null
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+            ) return@mapNotNull null
             val label = when {
                 caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
                 caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Données mobiles"
@@ -136,7 +147,7 @@ internal class NetworkPathOptimizer(context: Context) {
         candidates.forEachIndexed { index, pair ->
             val network = pair.first
             val label = pair.second
-            onProgress("Mesure de $label (${index + 1}/${candidates.size})")
+            onProgress("Mesure de $label (\${index + 1}/\${candidates.size})")
             val times = measureNetwork(network, PROBE_ATTEMPTS)
             val medianMs = median(times) ?: 0L
             val jitterMs = if (times.isEmpty()) 0L else median(times.map { abs(it - medianMs) }) ?: 0L
@@ -161,24 +172,21 @@ internal class NetworkPathOptimizer(context: Context) {
             return OptimizationReport(decision, measured.map { it.score }, false, "Le réseau sélectionné a changé. Aucune liaison appliquée.")
         }
 
-        // If the selected path is already the process path, report retention—not a switch.
         if (selected.network == current) {
             return OptimizationReport(
                 decision, measured.map { it.score }, true,
-                "Chemin ${decision.selected.label} conservé : il est déjà le meilleur chemin mesuré. Aucun changement de réseau n'a été effectué.",
+                "Chemin \${decision.selected.label} conservé : il présente le meilleur compromis mesuré. Aucun changement de réseau n'a été effectué.",
                 changed = false
             )
         }
 
-        onProgress("Application et vérification du chemin ${decision.selected.label}…")
+        onProgress("Application et vérification du chemin \${decision.selected.label}…")
         val bound = cm.bindProcessToNetwork(selected.network)
         if (!bound) {
             return OptimizationReport(decision, measured.map { it.score }, false, "Android a refusé la liaison réseau. Aucun changement confirmé.")
         }
 
         processBoundNetwork = selected.network
-
-        // Re-check both Android validation and real HTTPS reachability after binding.
         val postApplyTimes = if (isStillValidated(cm, selected.network)) {
             measureNetwork(selected.network, POST_APPLY_PROBES)
         } else {
@@ -195,7 +203,7 @@ internal class NetworkPathOptimizer(context: Context) {
 
         return OptimizationReport(
             decision, measured.map { it.score }, true,
-            "Chemin ${decision.selected.label} modifié puis vérifié (${postApplyTimes.size}/${POST_APPLY_PROBES} sondes réussies). ${decision.reason}",
+            "Chemin \${decision.selected.label} modifié puis vérifié (\${postApplyTimes.size}/\${POST_APPLY_PROBES} sondes réussies). \${decision.reason}",
             changed = true
         )
     }
@@ -247,8 +255,7 @@ internal class NetworkPathOptimizer(context: Context) {
         return if (sorted.size % 2 == 1) sorted[middle] else (sorted[middle - 1] + sorted[middle]) / 2L
     }
 
-    private fun failure(message: String) =
-        OptimizationReport(null, emptyList(), false, message)
+    private fun failure(message: String) = OptimizationReport(null, emptyList(), false, message)
 
     private companion object {
         const val PROBE_ATTEMPTS = 7

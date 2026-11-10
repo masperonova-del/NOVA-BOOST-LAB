@@ -33,6 +33,12 @@ private val Muted = Color(0xFF9CAFC5)
 private val Border = Color(0xFF263B55)
 private val Danger = Color(0xFFFF8C8C)
 
+private val wifiProfiles = listOf(
+    "wifi_1" to "Wi-Fi 1 — chambre (sans répéteur)",
+    "wifi_2" to "Wi-Fi 2 — proche (signal faible)",
+    "wifi_3" to "Wi-Fi 3 — chez ta sœur"
+)
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,6 +66,10 @@ private fun OptimizerScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val optimizer = remember(context) { NetworkPathOptimizer(context.applicationContext) }
+    val historyStore = remember(context) { WifiProfileHistory(context.applicationContext) }
+    var selectedWifiProfile by remember { mutableStateOf("wifi_1") }
+    var profileMenuExpanded by remember { mutableStateOf(false) }
+    var profileHistory by remember { mutableStateOf(historyStore.summary(selectedWifiProfile)) }
     var running by remember { mutableStateOf(false) }
     var restoring by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf("Prêt") }
@@ -125,6 +135,62 @@ private fun OptimizerScreen() {
             }
 
             PanelCard {
+                Text("HISTORIQUE DES TROIS WI-FI", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    "Sélectionne manuellement le profil correspondant au Wi-Fi auquel ton téléphone est connecté avant chaque test. Le profil est une étiquette locale : l'application ne lit pas le nom du réseau.",
+                    color = Muted, fontSize = 11.sp, lineHeight = 16.sp
+                )
+                Spacer(Modifier.height(10.dp))
+                Box {
+                    OutlinedButton(
+                        onClick = { profileMenuExpanded = true },
+                        enabled = !running,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(wifiProfiles.first { it.first == selectedWifiProfile }.second)
+                    }
+                    DropdownMenu(
+                        expanded = profileMenuExpanded,
+                        onDismissRequest = { profileMenuExpanded = false }
+                    ) {
+                        wifiProfiles.forEach { (id, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    selectedWifiProfile = id
+                                    profileHistory = historyStore.summary(id)
+                                    profileMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                if (profileHistory.runCount == 0) {
+                    Text("Aucune mesure enregistrée pour ce profil.", color = Muted, fontSize = 12.sp)
+                } else {
+                    Text(
+                        "Tests enregistrés : \${profileHistory.runCount}",
+                        color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Médiane de l'historique : \${profileHistory.medianMs} ms • dispersion médiane : \${profileHistory.jitterMs} ms",
+                        color = Mint, fontSize = 12.sp
+                    )
+                    Text(
+                        "Dernier test : \${profileHistory.lastMedianMs} ms • dispersion \${profileHistory.lastJitterMs} ms",
+                        color = Muted, fontSize = 11.sp
+                    )
+                }
+                Text(
+                    "Historique local limité aux 12 dernières mesures par profil. Il reste sur cet appareil.",
+                    color = Muted, fontSize = 10.sp
+                )
+            }
+
+            PanelCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Tune, contentDescription = null, tint = Blue)
                     Spacer(Modifier.width(8.dp))
@@ -132,7 +198,7 @@ private fun OptimizerScreen() {
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Sept sondes HTTPS par réseau candidat. Le moteur compare les médianes, mesure la dispersion et exige au moins 5 réponses réussies sur 7. Un chemin alternatif doit être au moins 15 % plus rapide.",
+                    "Sept sondes HTTPS par réseau candidat. Le moteur exige au moins 5 réponses sur 7 et compare un score combinant la médiane et la dispersion. Un chemin alternatif doit être au moins 15 % meilleur.",
                     color = Muted, fontSize = 12.sp, lineHeight = 18.sp
                 )
                 Spacer(Modifier.height(14.dp))
@@ -146,6 +212,10 @@ private fun OptimizerScreen() {
                                 val result = optimizer.optimizeProcessPath { progress = it }
                                 report = result
                                 networkAvailability = optimizer.readNetworkAvailability()
+                                result.measurements.firstOrNull { it.isCurrent && it.label == "Wi-Fi" }?.let { currentWifi ->
+                                    historyStore.record(selectedWifiProfile, currentWifi)
+                                    profileHistory = historyStore.summary(selectedWifiProfile)
+                                }
                                 message = result.message
                                 progress = when {
                                     !result.applied -> "ÉCHEC — AUCUN CHANGEMENT CONFIRMÉ"
@@ -155,7 +225,7 @@ private fun OptimizerScreen() {
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
                             } catch (error: Exception) {
-                                message = "L'optimisation n'a pas pu être terminée : ${error.message ?: "erreur inconnue"}"
+                                message = "L'optimisation n'a pas pu être terminée : \${error.message ?: "erreur inconnue"}"
                                 progress = "Échec"
                             } finally {
                                 running = false
@@ -194,14 +264,17 @@ private fun OptimizerScreen() {
                             ) {
                                 Column(Modifier.weight(1f)) {
                                     Text(
-                                        path.label + if (path.isCurrent) " • actuel" else "",
+                                        path.label + if (path.isCurrent) " • actuel" else " • alternatif",
                                         color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold
                                     )
-                                    Text("${path.successes}/${path.attempts} réponses • dispersion médiane ${path.jitterMs} ms", color = Muted, fontSize = 10.sp)
+                                    Text(
+                                        "\${path.successes}/\${path.attempts} réponses • dispersion médiane \${path.jitterMs} ms • score \${path.stabilityAdjustedMs} ms",
+                                        color = Muted, fontSize = 10.sp
+                                    )
                                 }
                                 Text(
-                                    if (path.medianMs > 0L) "${path.medianMs} ms" else "Échec",
-                                    color = if (path.successes >= 2) Mint else Danger,
+                                    if (path.medianMs > 0L) "\${path.medianMs} ms" else "Échec",
+                                    color = if (path.successes >= 5) Mint else Danger,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp
                                 )
@@ -211,7 +284,7 @@ private fun OptimizerScreen() {
                     }
                     currentReport.decision?.let {
                         Spacer(Modifier.height(9.dp))
-                        Text("CHEMIN RETENU : ${it.selected.label}", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("CHEMIN RETENU : \${it.selected.label}", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Text(it.reason, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
                     }
                 }
@@ -243,7 +316,7 @@ private fun OptimizerScreen() {
                 Text("PÉRIMÈTRE RÉEL", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(7.dp))
                 Text(
-                    "Android applique cette liaison au processus NOVA BOOST LAB uniquement. Elle ne modifie pas le routage de Call of Duty Mobile ni celui des autres applications. Seuls les réseaux déjà disponibles et validés par Android sont comparés ; aucun réseau mobile n'est activé de force.",
+                    "Android applique cette liaison au processus NOVA BOOST LAB uniquement. Elle ne modifie pas le routage de Call of Duty Mobile ni celui des autres applications. Les réseaux disponibles et validés simultanément sont comparés ; les autres Wi-Fi sont comparés via leur historique manuel. Aucun réseau mobile n'est activé de force.",
                     color = Muted, fontSize = 11.sp, lineHeight = 17.sp
                 )
             }
