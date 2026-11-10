@@ -45,6 +45,29 @@ class WifiSignalRankerTest {
         assertTrue(WifiSignalRanker.rank(emptyList()).isEmpty())
     }
 
+    @Test
+    fun classifiesOweAsWpa3EnhancedOpenRatherThanPlainOpen() {
+        assertEquals("WPA3 Enhanced Open", WifiSecurityClassifier.classify("[OWE][ESS]"))
+    }
+
+    @Test
+    fun classifiesWpa3AndLegacyOpenNetworks() {
+        assertEquals("WPA3", WifiSecurityClassifier.classify("[WPA2-PSK-SAE-CCMP][ESS]"))
+        assertEquals("Ouvert", WifiSecurityClassifier.classify("[ESS]"))
+    }
+
+    @Test
+    fun distinguishesUnknownSecurityCapabilities() {
+        assertEquals("Autre / non identifié", WifiSecurityClassifier.classify("[VENDOR-SECURITY][ESS]"))
+    }
+
+    @Test
+    fun reportsCachedRejectedAndTimedOutScansClearly() {
+        assertTrue(WifiScanStatus.fromBroadcast(false).contains("cache"))
+        assertTrue(WifiScanStatus.startRejected().contains("refusé"))
+        assertTrue(WifiScanStatus.timedOut().contains("délai"))
+    }
+
     private fun network(ssid: String, signal: Int, frequency: Int = 2437) =
         NearbyWifiNetwork(ssid, signal, frequency, "WPA/WPA2")
 }
