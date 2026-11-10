@@ -133,7 +133,11 @@ private fun OptimizerScreen() {
                                 val result = optimizer.optimizeProcessPath { progress = it }
                                 report = result
                                 message = result.message
-                                progress = if (result.applied) "Optimisation appliquée" else "Aucun changement appliqué"
+                                progress = when {
+                                    !result.applied -> "ÉCHEC — AUCUN CHANGEMENT CONFIRMÉ"
+                                    result.changed -> "CHEMIN MODIFIÉ ET VÉRIFIÉ"
+                                    else -> "CHEMIN COURANT CONSERVÉ ET VÉRIFIÉ"
+                                }
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
                             } catch (error: Exception) {
