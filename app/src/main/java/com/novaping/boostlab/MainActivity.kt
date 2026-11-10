@@ -70,7 +70,7 @@ private fun LabScreen() {
 
     Surface(modifier = Modifier.fillMaxSize(), color = Navy) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
+            modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 18.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(top = 24.dp, bottom = 30.dp)
         ) {
@@ -116,7 +116,7 @@ private fun LabScreen() {
             item {
                 PanelCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
+                        Spacer(
                             Modifier.size(10.dp).background(
                                 if (network.validated) Mint else if (network.hasInternet) Blue else Danger,
                                 CircleShape
