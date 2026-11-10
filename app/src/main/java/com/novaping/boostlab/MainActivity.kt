@@ -1,8 +1,14 @@
 package com.novaping.boostlab
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.net.wifi.WifiManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -68,8 +74,34 @@ private fun OptimizerScreen() {
     val optimizer = remember(context) { NetworkPathOptimizer(context.applicationContext) }
     val historyStore = remember(context) { WifiProfileHistory(context.applicationContext) }
     var selectedWifiProfile by remember { mutableStateOf("wifi_1") }
+    var detectedWifiSsid by remember { mutableStateOf<String?>(null) }
+    var wifiDetectionMessage by remember { mutableStateOf("Détection automatique non activée. Les profils manuels restent disponibles.") }
+    var activeWifiProfileId by remember { mutableStateOf("wifi_1") }
     var profileMenuExpanded by remember { mutableStateOf(false) }
     var profileHistory by remember { mutableStateOf(historyStore.summary(selectedWifiProfile)) }
+    val refreshConnectedWifi: () -> Unit = {
+        @Suppress("DEPRECATION")
+        val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        @Suppress("DEPRECATION")
+        val rawSsid = wifiManager.connectionInfo?.ssid
+        val ssid = rawSsid?.takeIf { it.isNotBlank() && it != WifiManager.UNKNOWN_SSID && it != "<unknown ssid>" }
+            ?.removeSurrounding("\"")
+        if (ssid != null) {
+            detectedWifiSsid = ssid
+            activeWifiProfileId = historyStore.profileIdForSsid(ssid)
+            profileHistory = historyStore.summary(activeWifiProfileId)
+            wifiDetectionMessage = "Réseau détecté : $ssid. Historique associé automatiquement."
+        } else {
+            detectedWifiSsid = null
+            wifiDetectionMessage = "Nom Wi-Fi indisponible. Vérifie la connexion Wi-Fi et les services de localisation Android."
+        }
+    }
+    val wifiPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) refreshConnectedWifi()
+        else wifiDetectionMessage = "Autorisation refusée. La détection automatique reste désactivée ; les profils manuels restent disponibles."
+    }
     var running by remember { mutableStateOf(false) }
     var restoring by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf("Prêt") }
@@ -138,34 +170,55 @@ private fun OptimizerScreen() {
                 Text("HISTORIQUE DES TROIS WI-FI", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(7.dp))
                 Text(
-                    "Sélectionne manuellement le profil correspondant au Wi-Fi auquel ton téléphone est connecté avant chaque test. Le profil est une étiquette locale : l'application ne lit pas le nom du réseau.",
+                    "Le profil est identifié par le nom du Wi-Fi connecté lorsque Android autorise sa lecture. Le nom et les mesures restent sur cet appareil.",
                     color = Muted, fontSize = 11.sp, lineHeight = 16.sp
                 )
                 Spacer(Modifier.height(10.dp))
-                Box {
-                    OutlinedButton(
-                        onClick = { profileMenuExpanded = true },
-                        enabled = !running,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text(wifiProfiles.first { it.first == selectedWifiProfile }.second)
-                    }
-                    DropdownMenu(
-                        expanded = profileMenuExpanded,
-                        onDismissRequest = { profileMenuExpanded = false }
-                    ) {
-                        wifiProfiles.forEach { (id, label) ->
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = {
-                                    selectedWifiProfile = id
-                                    profileHistory = historyStore.summary(id)
-                                    profileMenuExpanded = false
-                                }
-                            )
+                OutlinedButton(
+                    onClick = {
+                        if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                            refreshConnectedWifi()
+                        } else {
+                            wifiPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                        }
+                    },
+                    enabled = !running,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(if (detectedWifiSsid == null) "DÉTECTER LE WI-FI CONNECTÉ" else "ACTUALISER LE WI-FI DÉTECTÉ")
+                }
+                Text(wifiDetectionMessage, color = if (detectedWifiSsid != null) Mint else Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                Spacer(Modifier.height(8.dp))
+                if (detectedWifiSsid == null) {
+                    Box {
+                        OutlinedButton(
+                            onClick = { profileMenuExpanded = true },
+                            enabled = !running,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(wifiProfiles.first { it.first == selectedWifiProfile }.second + " — manuel")
+                        }
+                        DropdownMenu(
+                            expanded = profileMenuExpanded,
+                            onDismissRequest = { profileMenuExpanded = false }
+                        ) {
+                            wifiProfiles.forEach { (id, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        selectedWifiProfile = id
+                                        activeWifiProfileId = id
+                                        profileHistory = historyStore.summary(id)
+                                        profileMenuExpanded = false
+                                    }
+                                )
+                            }
                         }
                     }
+                } else {
+                    Text("Profil automatique : $detectedWifiSsid", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.height(8.dp))
                 if (profileHistory.runCount == 0) {
@@ -213,8 +266,8 @@ private fun OptimizerScreen() {
                                 report = result
                                 networkAvailability = optimizer.readNetworkAvailability()
                                 result.measurements.firstOrNull { it.isCurrent && it.label == "Wi-Fi" }?.let { currentWifi ->
-                                    historyStore.record(selectedWifiProfile, currentWifi)
-                                    profileHistory = historyStore.summary(selectedWifiProfile)
+                                    historyStore.record(activeWifiProfileId, currentWifi)
+                                    profileHistory = historyStore.summary(activeWifiProfileId)
                                 }
                                 message = result.message
                                 progress = when {
