@@ -2,7 +2,9 @@ name: Build NOVA BOOST LAB APK
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
+      - next/0.2.0
   workflow_dispatch:
 
 jobs:
@@ -29,11 +31,16 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Run unit tests
+        run: gradle --no-daemon :app:testDebugUnitTest
+
       - name: Build APK
         run: gradle --no-daemon :app:assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NOVA-BOOST-LAB-debug
+          name: NOVA-BOOST-LAB-v0.2.0-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
