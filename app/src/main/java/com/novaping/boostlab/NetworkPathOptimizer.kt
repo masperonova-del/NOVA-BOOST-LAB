@@ -9,11 +9,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.math.abs
 
 internal data class NetworkPathScore(
     val networkId: String,
     val label: String,
     val medianMs: Long,
+    val jitterMs: Long,
     val successes: Int,
     val attempts: Int,
     val isCurrent: Boolean
@@ -29,7 +31,7 @@ internal data class NetworkAvailability(
 )
 
 internal object NetworkPathSelector {
-    private const val MIN_SUCCESSFUL_PROBES = 2
+    private const val MIN_SUCCESSFUL_PROBES = 5
     private const val MIN_IMPROVEMENT = 0.15
 
     fun select(candidates: List<NetworkPathScore>): NetworkPathDecision? {
@@ -136,10 +138,13 @@ internal class NetworkPathOptimizer(context: Context) {
             val label = pair.second
             onProgress("Mesure de $label (${index + 1}/${candidates.size})")
             val times = measureNetwork(network, PROBE_ATTEMPTS)
+            val medianMs = median(times) ?: 0L
+            val jitterMs = if (times.isEmpty()) 0L else median(times.map { abs(it - medianMs) }) ?: 0L
             val score = NetworkPathScore(
                 networkId = network.toString(),
                 label = label,
-                medianMs = median(times) ?: 0L,
+                medianMs = medianMs,
+                jitterMs = jitterMs,
                 successes = times.size,
                 attempts = PROBE_ATTEMPTS,
                 isCurrent = network == current
@@ -246,11 +251,11 @@ internal class NetworkPathOptimizer(context: Context) {
         OptimizationReport(null, emptyList(), false, message)
 
     private companion object {
-        const val PROBE_ATTEMPTS = 3
+        const val PROBE_ATTEMPTS = 7
         const val POST_APPLY_PROBES = 3
         const val MIN_POST_APPLY_SUCCESSES = 2
-        const val TIMEOUT_MS = 2_500
-        const val INTERVAL_MS = 120L
+        const val TIMEOUT_MS = 1_800
+        const val INTERVAL_MS = 150L
         const val PROBE_URL = "https://www.google.com/generate_204"
     }
 }

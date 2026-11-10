@@ -132,7 +132,7 @@ private fun OptimizerScreen() {
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Trois sondes HTTPS par réseau candidat. Un chemin alternatif n'est choisi que s'il est au moins 15 % plus rapide que le chemin courant mesuré.",
+                    "Sept sondes HTTPS par réseau candidat. Le moteur compare les médianes, mesure la dispersion et exige au moins 5 réponses réussies sur 7. Un chemin alternatif doit être au moins 15 % plus rapide.",
                     color = Muted, fontSize = 12.sp, lineHeight = 18.sp
                 )
                 Spacer(Modifier.height(14.dp))
@@ -197,7 +197,7 @@ private fun OptimizerScreen() {
                                         path.label + if (path.isCurrent) " • actuel" else "",
                                         color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold
                                     )
-                                    Text("${path.successes}/${path.attempts} réponses réussies", color = Muted, fontSize = 10.sp)
+                                    Text("${path.successes}/${path.attempts} réponses • dispersion médiane ${path.jitterMs} ms", color = Muted, fontSize = 10.sp)
                                 }
                                 Text(
                                     if (path.medianMs > 0L) "${path.medianMs} ms" else "Échec",

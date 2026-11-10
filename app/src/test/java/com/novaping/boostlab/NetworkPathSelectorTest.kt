@@ -33,10 +33,10 @@ class NetworkPathSelectorTest {
     }
 
     @Test
-    fun ignoresCandidateWithFewerThanTwoSuccessfulProbes() {
+    fun ignoresCandidateWithFewerThanFiveSuccessfulProbes() {
         val decision = NetworkPathSelector.select(listOf(
-            path("wifi", "Wi-Fi", 50L, successes = 1, current = false),
-            path("cell", "Données mobiles", 100L, successes = 3, current = false)
+            path("wifi", "Wi-Fi", 50L, successes = 4, current = false),
+            path("cell", "Données mobiles", 100L, successes = 7, current = false)
         ))
         assertEquals("cell", decision?.selected?.networkId)
     }
@@ -44,7 +44,7 @@ class NetworkPathSelectorTest {
     @Test
     fun returnsNoDecisionWhenNoCandidateHasEnoughSuccesses() {
         assertNull(NetworkPathSelector.select(listOf(
-            path("wifi", "Wi-Fi", 50L, successes = 1, current = true)
+            path("wifi", "Wi-Fi", 50L, successes = 4, current = true)
         )))
     }
 
@@ -52,7 +52,7 @@ class NetworkPathSelectorTest {
     fun rejectsInvalidLatencyAndSuccessCounts() {
         assertNull(NetworkPathSelector.select(listOf(
             path("zero", "Wi-Fi", 0L, current = false),
-            path("bad-count", "Cellulaire", 100L, successes = 4, current = false)
+            path("bad-count", "Cellulaire", 100L, successes = 8, current = false)
         )))
     }
 
@@ -60,7 +60,7 @@ class NetworkPathSelectorTest {
         id: String,
         label: String,
         median: Long,
-        successes: Int = 3,
+        successes: Int = 7,
         current: Boolean
-    ) = NetworkPathScore(id, label, median, successes, 3, current)
+    ) = NetworkPathScore(id, label, median, 0L, successes, 7, current)
 }
