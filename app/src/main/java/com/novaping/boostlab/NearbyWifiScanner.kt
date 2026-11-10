@@ -32,9 +32,9 @@ internal data class WifiScanReport(
 internal object WifiSecurityClassifier {
     fun classify(capabilities: String): String {
         val flags = capabilities.uppercase()
-        val capabilityTags = Regex("""\\[([^\\]]+)]""")
-            .findAll(flags)
-            .map { it.groupValues[1].trim() }
+        val capabilityTags = flags.split("[", "]")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
             .toSet()
         return when {
             "SAE" in flags -> "WPA3"
