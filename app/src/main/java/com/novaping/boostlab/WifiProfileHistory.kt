@@ -19,7 +19,7 @@ internal class WifiProfileHistory(context: Context) {
         val samples = readSamples(profileId).toMutableList()
         samples += Sample(score.medianMs, score.jitterMs)
         while (samples.size > MAX_SAMPLES) samples.removeAt(0)
-        val encoded = samples.joinToString(",") { "\${it.medianMs}:\${it.jitterMs}" }
+        val encoded = samples.joinToString(",") { "${it.medianMs}:${it.jitterMs}" }
         preferences.edit().putString(profileId, encoded).apply()
     }
 

@@ -172,15 +172,15 @@ private fun OptimizerScreen() {
                     Text("Aucune mesure enregistrée pour ce profil.", color = Muted, fontSize = 12.sp)
                 } else {
                     Text(
-                        "Tests enregistrés : \${profileHistory.runCount}",
+                        "Tests enregistrés : ${profileHistory.runCount}",
                         color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        "Médiane de l'historique : \${profileHistory.medianMs} ms • dispersion médiane : \${profileHistory.jitterMs} ms",
+                        "Médiane de l'historique : ${profileHistory.medianMs} ms • dispersion médiane : ${profileHistory.jitterMs} ms",
                         color = Mint, fontSize = 12.sp
                     )
                     Text(
-                        "Dernier test : \${profileHistory.lastMedianMs} ms • dispersion \${profileHistory.lastJitterMs} ms",
+                        "Dernier test : ${profileHistory.lastMedianMs} ms • dispersion ${profileHistory.lastJitterMs} ms",
                         color = Muted, fontSize = 11.sp
                     )
                 }
@@ -225,7 +225,7 @@ private fun OptimizerScreen() {
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
                             } catch (error: Exception) {
-                                message = "L'optimisation n'a pas pu être terminée : \${error.message ?: "erreur inconnue"}"
+                                message = "L'optimisation n'a pas pu être terminée : ${error.message ?: "erreur inconnue"}"
                                 progress = "Échec"
                             } finally {
                                 running = false
@@ -268,12 +268,12 @@ private fun OptimizerScreen() {
                                         color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold
                                     )
                                     Text(
-                                        "\${path.successes}/\${path.attempts} réponses • dispersion médiane \${path.jitterMs} ms • score \${path.stabilityAdjustedMs} ms",
+                                        "${path.successes}/${path.attempts} réponses • dispersion médiane ${path.jitterMs} ms • score ${path.stabilityAdjustedMs} ms",
                                         color = Muted, fontSize = 10.sp
                                     )
                                 }
                                 Text(
-                                    if (path.medianMs > 0L) "\${path.medianMs} ms" else "Échec",
+                                    if (path.medianMs > 0L) "${path.medianMs} ms" else "Échec",
                                     color = if (path.successes >= 5) Mint else Danger,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp
@@ -284,7 +284,7 @@ private fun OptimizerScreen() {
                     }
                     currentReport.decision?.let {
                         Spacer(Modifier.height(9.dp))
-                        Text("CHEMIN RETENU : \${it.selected.label}", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("CHEMIN RETENU : ${it.selected.label}", color = Mint, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Text(it.reason, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
                     }
                 }

@@ -147,7 +147,7 @@ internal class NetworkPathOptimizer(context: Context) {
         candidates.forEachIndexed { index, pair ->
             val network = pair.first
             val label = pair.second
-            onProgress("Mesure de $label (\${index + 1}/\${candidates.size})")
+            onProgress("Mesure de $label (${index + 1}/${candidates.size})")
             val times = measureNetwork(network, PROBE_ATTEMPTS)
             val medianMs = median(times) ?: 0L
             val jitterMs = if (times.isEmpty()) 0L else median(times.map { abs(it - medianMs) }) ?: 0L
@@ -175,12 +175,12 @@ internal class NetworkPathOptimizer(context: Context) {
         if (selected.network == current) {
             return OptimizationReport(
                 decision, measured.map { it.score }, true,
-                "Chemin \${decision.selected.label} conservé : il présente le meilleur compromis mesuré. Aucun changement de réseau n'a été effectué.",
+                "Chemin ${decision.selected.label} conservé : il présente le meilleur compromis mesuré. Aucun changement de réseau n'a été effectué.",
                 changed = false
             )
         }
 
-        onProgress("Application et vérification du chemin \${decision.selected.label}…")
+        onProgress("Application et vérification du chemin ${decision.selected.label}…")
         val bound = cm.bindProcessToNetwork(selected.network)
         if (!bound) {
             return OptimizationReport(decision, measured.map { it.score }, false, "Android a refusé la liaison réseau. Aucun changement confirmé.")
@@ -203,7 +203,7 @@ internal class NetworkPathOptimizer(context: Context) {
 
         return OptimizationReport(
             decision, measured.map { it.score }, true,
-            "Chemin \${decision.selected.label} modifié puis vérifié (\${postApplyTimes.size}/\${POST_APPLY_PROBES} sondes réussies). \${decision.reason}",
+            "Chemin ${decision.selected.label} modifié puis vérifié (${postApplyTimes.size}/${POST_APPLY_PROBES} sondes réussies). ${decision.reason}",
             changed = true
         )
     }
