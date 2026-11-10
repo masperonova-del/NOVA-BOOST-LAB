@@ -21,6 +21,13 @@ internal data class NetworkPathScore(
 
 internal data class NetworkPathDecision(val selected: NetworkPathScore, val reason: String)
 
+internal data class TransportAvailability(val detected: Boolean, val validated: Boolean)
+internal data class NetworkAvailability(
+    val wifi: TransportAvailability,
+    val cellular: TransportAvailability,
+    val ethernet: TransportAvailability
+)
+
 internal object NetworkPathSelector {
     private const val MIN_SUCCESSFUL_PROBES = 2
     private const val MIN_IMPROVEMENT = 0.15
@@ -60,12 +67,40 @@ internal data class OptimizationReport(
 /** Selects and verifies a network for NOVA BOOST LAB's process only. */
 internal class NetworkPathOptimizer(context: Context) {
     private val manager = context.getSystemService(ConnectivityManager::class.java)
+    // Keep track of this process's own binding while the optimizer instance lives.
+    private var processBoundNetwork: Network? = null
+
+    fun readNetworkAvailability(): NetworkAvailability {
+        val cm = manager
+        if (cm == null) {
+            val unavailable = TransportAvailability(false, false)
+            return NetworkAvailability(unavailable, unavailable, unavailable)
+        }
+        fun status(transport: Int): TransportAvailability {
+            val matching = cm.allNetworks.mapNotNull { network ->
+                cm.getNetworkCapabilities(network)
+                    ?.takeIf { it.hasTransport(transport) }
+            }
+            return TransportAvailability(
+                detected = matching.isNotEmpty(),
+                validated = matching.any {
+                    it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                        it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                }
+            )
+        }
+        return NetworkAvailability(
+            wifi = status(NetworkCapabilities.TRANSPORT_WIFI),
+            cellular = status(NetworkCapabilities.TRANSPORT_CELLULAR),
+            ethernet = status(NetworkCapabilities.TRANSPORT_ETHERNET)
+        )
+    }
 
     suspend fun optimizeProcessPath(onProgress: (String) -> Unit): OptimizationReport {
         val cm = manager ?: return failure("Gestionnaire réseau indisponible.")
 
         // A process binding takes precedence over Android's default active network.
-        val processBound = ConnectivityManager.getBoundNetworkForProcess()
+        val processBound = processBoundNetwork
         val defaultNetwork = cm.activeNetwork
         val current = processBound ?: defaultNetwork
 
@@ -136,6 +171,8 @@ internal class NetworkPathOptimizer(context: Context) {
             return OptimizationReport(decision, measured.map { it.score }, false, "Android a refusé la liaison réseau. Aucun changement confirmé.")
         }
 
+        processBoundNetwork = selected.network
+
         // Re-check both Android validation and real HTTPS reachability after binding.
         val postApplyTimes = if (isStillValidated(cm, selected.network)) {
             measureNetwork(selected.network, POST_APPLY_PROBES)
@@ -144,6 +181,7 @@ internal class NetworkPathOptimizer(context: Context) {
         }
         if (postApplyTimes.size < MIN_POST_APPLY_SUCCESSES) {
             cm.bindProcessToNetwork(null)
+            processBoundNetwork = null
             return OptimizationReport(
                 decision, measured.map { it.score }, false,
                 "Le chemin sélectionné n'a pas passé la vérification après application. Liaison retirée ; Android reprend son chemin par défaut."
@@ -157,7 +195,11 @@ internal class NetworkPathOptimizer(context: Context) {
         )
     }
 
-    fun restoreDefaultPath(): Boolean = manager?.bindProcessToNetwork(null) ?: false
+    fun restoreDefaultPath(): Boolean {
+        val restored = manager?.bindProcessToNetwork(null) ?: false
+        if (restored) processBoundNetwork = null
+        return restored
+    }
 
     private fun isStillValidated(cm: ConnectivityManager, network: Network): Boolean {
         val caps = cm.getNetworkCapabilities(network) ?: return false

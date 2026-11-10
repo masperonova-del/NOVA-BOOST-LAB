@@ -67,6 +67,7 @@ private fun OptimizerScreen() {
         mutableStateOf("Compare les chemins réseau disponibles, puis applique le meilleur au trafic de NOVA BOOST LAB.")
     }
     var report by remember { mutableStateOf<OptimizationReport?>(null) }
+    var networkAvailability by remember { mutableStateOf(optimizer.readNetworkAvailability()) }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Navy) {
         Column(
@@ -112,6 +113,18 @@ private fun OptimizerScreen() {
             }
 
             PanelCard {
+                Text("ÉTAT DES RÉSEAUX", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+                NetworkStatusRow("Wi-Fi", networkAvailability.wifi)
+                NetworkStatusRow("Données mobiles", networkAvailability.cellular)
+                NetworkStatusRow("Ethernet", networkAvailability.ethernet)
+                Text(
+                    "Un réseau détecté n'est pas forcément connecté à Internet. Seuls les réseaux validés par Android sont testés par l'optimiseur.",
+                    color = Muted, fontSize = 10.sp, lineHeight = 15.sp
+                )
+            }
+
+            PanelCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Tune, contentDescription = null, tint = Blue)
                     Spacer(Modifier.width(8.dp))
@@ -132,6 +145,7 @@ private fun OptimizerScreen() {
                             try {
                                 val result = optimizer.optimizeProcessPath { progress = it }
                                 report = result
+                                networkAvailability = optimizer.readNetworkAvailability()
                                 message = result.message
                                 progress = when {
                                     !result.applied -> "ÉCHEC — AUCUN CHANGEMENT CONFIRMÉ"
@@ -207,6 +221,7 @@ private fun OptimizerScreen() {
                 onClick = {
                     restoring = true
                     val restored = optimizer.restoreDefaultPath()
+                    networkAvailability = optimizer.readNetworkAvailability()
                     message = if (restored) {
                         "Liaison personnalisée retirée. Android reprend le chemin réseau par défaut pour NOVA BOOST LAB."
                     } else {
@@ -238,6 +253,23 @@ private fun OptimizerScreen() {
                 color = Muted, fontSize = 9.sp, modifier = Modifier.align(Alignment.CenterHorizontally)
             )
         }
+    }
+}
+
+@Composable
+private fun NetworkStatusRow(label: String, status: TransportAvailability) {
+    val stateText = when {
+        !status.detected -> "Non détecté"
+        status.validated -> "Internet validé"
+        else -> "Détecté — Internet non validé"
+    }
+    val stateColor = if (status.validated) Mint else if (status.detected) Blue else Muted
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, modifier = Modifier.weight(1f), fontSize = 12.sp)
+        Text(stateText, color = stateColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
