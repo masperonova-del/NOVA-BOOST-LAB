@@ -39,12 +39,6 @@ private val Muted = Color(0xFF9CAFC5)
 private val Border = Color(0xFF263B55)
 private val Danger = Color(0xFFFF8C8C)
 
-private val wifiProfiles = listOf(
-    "wifi_1" to "Wi-Fi 1 — chambre (sans répéteur)",
-    "wifi_2" to "Wi-Fi 2 — proche (signal faible)",
-    "wifi_3" to "Wi-Fi 3 — chez ta sœur"
-)
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,12 +67,10 @@ private fun OptimizerScreen() {
     val scope = rememberCoroutineScope()
     val optimizer = remember(context) { NetworkPathOptimizer(context.applicationContext) }
     val historyStore = remember(context) { WifiProfileHistory(context.applicationContext) }
-    var selectedWifiProfile by remember { mutableStateOf("wifi_1") }
     var detectedWifiSsid by remember { mutableStateOf<String?>(null) }
-    var wifiDetectionMessage by remember { mutableStateOf("Détection automatique non activée. Les profils manuels restent disponibles.") }
-    var activeWifiProfileId by remember { mutableStateOf("wifi_1") }
-    var profileMenuExpanded by remember { mutableStateOf(false) }
-    var profileHistory by remember { mutableStateOf(historyStore.summary(selectedWifiProfile)) }
+    var wifiDetectionMessage by remember { mutableStateOf("Le réseau Wi-Fi connecté sera détecté automatiquement.") }
+    var activeWifiProfileId by remember { mutableStateOf<String?>(null) }
+    var profileHistory by remember { mutableStateOf(historyStore.summary("")) }
     val refreshConnectedWifi: () -> Unit = {
         @Suppress("DEPRECATION")
         val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
@@ -93,16 +85,16 @@ private fun OptimizerScreen() {
             wifiDetectionMessage = "Réseau détecté : $ssid. Historique associé automatiquement."
         } else {
             detectedWifiSsid = null
-            activeWifiProfileId = selectedWifiProfile
-            profileHistory = historyStore.summary(selectedWifiProfile)
-            wifiDetectionMessage = "Nom Wi-Fi indisponible. Vérifie la connexion Wi-Fi et les services de localisation Android."
+            activeWifiProfileId = null
+            profileHistory = historyStore.summary("")
+            wifiDetectionMessage = "Nom Wi-Fi indisponible. Aucune mesure ne sera attribuée à un profil arbitraire. Vérifie les autorisations et les services de localisation Android."
         }
     }
     val wifiPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true) refreshConnectedWifi()
-        else wifiDetectionMessage = "Autorisation de localisation précise refusée. La détection automatique reste désactivée ; les profils manuels restent disponibles."
+        else { activeWifiProfileId = null; profileHistory = historyStore.summary(""); wifiDetectionMessage = "Autorisation refusée. L’historique par réseau nécessite que le nom du Wi-Fi soit accessible à Android." }
     }
     var running by remember { mutableStateOf(false) }
     var restoring by remember { mutableStateOf(false) }
@@ -178,7 +170,7 @@ private fun OptimizerScreen() {
                 Text("HISTORIQUE WI-FI", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(7.dp))
                 Text(
-                    "Android exige l’autorisation de localisation pour révéler le nom du Wi-Fi. NOVA BOOST LAB ne lit pas les coordonnées GPS ; le nom et les mesures restent sur cet appareil.",
+                    "Android peut exiger l’autorisation de localisation et l’activation des services de localisation pour révéler le nom du Wi-Fi. NOVA BOOST LAB ne lit pas les coordonnées GPS ; les identifiants hachés et les mesures restent sur cet appareil.",
                     color = Muted, fontSize = 11.sp, lineHeight = 16.sp
                 )
                 Spacer(Modifier.height(10.dp))
@@ -198,35 +190,13 @@ private fun OptimizerScreen() {
                 }
                 Text(wifiDetectionMessage, color = if (detectedWifiSsid != null) Mint else Muted, fontSize = 11.sp, lineHeight = 16.sp)
                 Spacer(Modifier.height(8.dp))
-                if (detectedWifiSsid == null) {
-                    Box {
-                        OutlinedButton(
-                            onClick = { profileMenuExpanded = true },
-                            enabled = !running,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text(wifiProfiles.first { it.first == selectedWifiProfile }.second + " — manuel")
-                        }
-                        DropdownMenu(
-                            expanded = profileMenuExpanded,
-                            onDismissRequest = { profileMenuExpanded = false }
-                        ) {
-                            wifiProfiles.forEach { (id, label) ->
-                                DropdownMenuItem(
-                                    text = { Text(label) },
-                                    onClick = {
-                                        selectedWifiProfile = id
-                                        activeWifiProfileId = id
-                                        profileHistory = historyStore.summary(id)
-                                        profileMenuExpanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
+                if (detectedWifiSsid != null) {
+                    Text("Réseau connecté : $detectedWifiSsid", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 } else {
-                    Text("Profil automatique : $detectedWifiSsid", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Aucun nom de réseau exploitable pour le moment. L’historique restera en attente : aucun profil prédéfini ou nom inventé ne sera utilisé.",
+                        color = Muted, fontSize = 11.sp, lineHeight = 16.sp
+                    )
                 }
                 Spacer(Modifier.height(8.dp))
                 if (profileHistory.runCount == 0) {
@@ -249,30 +219,16 @@ private fun OptimizerScreen() {
                     "Historique local limité aux 12 dernières mesures par profil. Il reste sur cet appareil.",
                     color = Muted, fontSize = 10.sp
                 )
-                if (detectedWifiSsid != null) {
+                val archivedRuns = historyStore.legacyArchiveRunCount()
+                if (archivedRuns > 0) {
                     Spacer(Modifier.height(12.dp))
                     Divider(color = Border)
                     Spacer(Modifier.height(8.dp))
-                    Text("ANCIENS HISTORIQUES MANUELS — CONSERVÉS", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("ANCIENNES MESURES CONSERVÉES", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "Ces anciennes mesures ne sont ni supprimées ni mélangées aux profils automatiques. Tu peux encore les consulter ici.",
+                        "$archivedRuns anciennes mesures manuelles sont conservées localement. Elles ne sont associées à aucun réseau précis et ne sont pas mélangées aux nouveaux historiques automatiques.",
                         color = Muted, fontSize = 10.sp, lineHeight = 15.sp
                     )
-                    wifiProfiles.forEach { (legacyId, legacyLabel) ->
-                        val legacySummary = historyStore.summary(legacyId)
-                        if (legacySummary.runCount > 0) {
-                            Spacer(Modifier.height(7.dp))
-                            Text(legacyLabel, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                "${legacySummary.runCount} tests • médiane ${legacySummary.medianMs} ms • dispersion ${legacySummary.jitterMs} ms",
-                                color = Muted, fontSize = 10.sp
-                            )
-                            Text(
-                                "Dernier test : ${legacySummary.lastMedianMs} ms • dispersion ${legacySummary.lastJitterMs} ms",
-                                color = Muted, fontSize = 10.sp
-                            )
-                        }
-                    }
                 }
             }
 
@@ -303,8 +259,12 @@ private fun OptimizerScreen() {
                                 report = result
                                 networkAvailability = optimizer.readNetworkAvailability()
                                 result.measurements.firstOrNull { it.isCurrent && it.label == "Wi-Fi" }?.let { currentWifi ->
-                                    historyStore.record(profileIdForThisRun, currentWifi)
-                                    profileHistory = historyStore.summary(profileIdForThisRun)
+                                    if (profileIdForThisRun != null) {
+                                        historyStore.record(profileIdForThisRun, currentWifi)
+                                        profileHistory = historyStore.summary(profileIdForThisRun)
+                                    } else {
+                                        wifiDetectionMessage = "Mesure effectuée, mais historique non enregistré : Android n’a pas fourni le nom du réseau."
+                                    }
                                 }
                                 message = result.message
                                 progress = when {
