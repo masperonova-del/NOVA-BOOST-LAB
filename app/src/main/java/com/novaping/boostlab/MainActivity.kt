@@ -97,10 +97,10 @@ private fun OptimizerScreen() {
         }
     }
     val wifiPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) refreshConnectedWifi()
-        else wifiDetectionMessage = "Autorisation refusée. La détection automatique reste désactivée ; les profils manuels restent disponibles."
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true) refreshConnectedWifi()
+        else wifiDetectionMessage = "Autorisation de localisation précise refusée. La détection automatique reste désactivée ; les profils manuels restent disponibles."
     }
     var running by remember { mutableStateOf(false) }
     var restoring by remember { mutableStateOf(false) }
@@ -176,7 +176,7 @@ private fun OptimizerScreen() {
                 Text("HISTORIQUE WI-FI", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(7.dp))
                 Text(
-                    "Le profil est identifié par le nom du Wi-Fi connecté lorsque Android autorise sa lecture. Le nom et les mesures restent sur cet appareil.",
+                    "Android exige l’autorisation de localisation pour révéler le nom du Wi-Fi. NOVA BOOST LAB ne lit pas les coordonnées GPS ; le nom et les mesures restent sur cet appareil.",
                     color = Muted, fontSize = 11.sp, lineHeight = 16.sp
                 )
                 Spacer(Modifier.height(10.dp))
@@ -185,7 +185,7 @@ private fun OptimizerScreen() {
                         if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                             refreshConnectedWifi()
                         } else {
-                            wifiPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                            wifiPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                         }
                     },
                     enabled = !running,
