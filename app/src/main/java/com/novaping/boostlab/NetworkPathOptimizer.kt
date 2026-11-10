@@ -4,8 +4,11 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
@@ -224,23 +227,27 @@ internal class NetworkPathOptimizer(context: Context) {
     private suspend fun measureNetwork(network: Network, attempts: Int): List<Long> {
         val times = mutableListOf<Long>()
         repeat(attempts) {
+            currentCoroutineContext().ensureActive()
             val duration = withContext(Dispatchers.IO) {
-                runCatching {
-                    val connection = network.openConnection(URL(PROBE_URL)) as HttpURLConnection
-                    try {
-                        connection.connectTimeout = TIMEOUT_MS
-                        connection.readTimeout = TIMEOUT_MS
-                        connection.requestMethod = "GET"
-                        connection.instanceFollowRedirects = false
-                        connection.useCaches = false
-                        val start = System.nanoTime()
-                        val status = connection.responseCode
-                        val elapsed = (System.nanoTime() - start) / 1_000_000L
-                        if (status in 200..299) elapsed.coerceAtLeast(1L) else null
-                    } finally {
-                        connection.disconnect()
-                    }
-                }.getOrNull()
+                var connection: HttpURLConnection? = null
+                try {
+                    connection = network.openConnection(URL(PROBE_URL)) as HttpURLConnection
+                    connection.connectTimeout = TIMEOUT_MS
+                    connection.readTimeout = TIMEOUT_MS
+                    connection.requestMethod = "GET"
+                    connection.instanceFollowRedirects = false
+                    connection.useCaches = false
+                    val start = System.nanoTime()
+                    val status = connection.responseCode
+                    val elapsed = (System.nanoTime() - start) / 1_000_000L
+                    if (status in 200..299) elapsed.coerceAtLeast(1L) else null
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                } finally {
+                    connection?.disconnect()
+                }
             }
             if (duration != null) times += duration
             delay(INTERVAL_MS)
