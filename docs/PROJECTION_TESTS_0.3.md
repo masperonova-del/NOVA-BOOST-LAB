@@ -1,59 +1,48 @@
-# NOVA BOOST LAB 0.3 — Plan de tests de projection
+# NOVA BOOST LAB 0.3 — Tests de projection du moteur actif
 
-## Objet
+## Objectif
 
-Vérifier par des scénarios contrôlés que le Smart Network Optimizer transforme les résultats de diagnostic 0.2 en recommandations cohérentes, prudentes et explicables.
+Vérifier la politique qui sélectionne un chemin réseau parmi les chemins déjà disponibles et validés par Android. Les tests de sélection utilisent des données déterministes ; ils ne remplacent pas les mesures sur téléphone.
 
-Ces scénarios sont des tests logiciels avec données construites. Ils ne représentent pas des mesures radio ou Internet réelles.
+## Règles de sélection
 
-## Règles de décision projetées
+- Un candidat doit avoir une médiane strictement positive.
+- Au moins 2 réponses réussies sont nécessaires.
+- Le nombre de réussites ne peut pas dépasser le nombre d'essais.
+- Le candidat ayant la médiane la plus faible est retenu si aucun chemin courant mesurable n'existe.
+- Si le chemin courant est mesurable, un changement n'est autorisé que si l'alternative est au moins 15 % plus rapide.
+- Si aucun candidat n'est admissible, aucune décision n'est prise.
 
-| Règle | Comportement attendu |
-| --- | --- |
-| Android indique aucune capacité Internet | État « Pas d'accès Internet », action de vérification |
-| Internet annoncé mais non validé | État « Internet non validé », action de contrôle |
-| Moins de 3 réponses valides dans TCP ou HTTPS | Données insuffisantes, demander un nouveau test |
-| Réussite inférieure à 80 % dans une série | Profil irrégulier, demander un nouveau test |
-| Dispersion (max - min) / médiane supérieure à 0,50 | Profil irrégulier, demander un nouveau test |
-| Médiane TCP ≥ 300 ms ou HTTPS ≥ 1 500 ms | Réponses lentes sur les sondes, proposer une comparaison manuelle |
-| Données suffisantes, taux de réussite ≥ 80 %, dispersion ≤ 0,50 et médianes sous les seuils | Profil cohérent, conserver le réseau actuel |
+## Scénarios unitaires
 
-Les seuils sont des heuristiques de départ. Ils ne sont ni universels, ni équivalents au ping d'un jeu.
-
-## Scénarios automatisés
-
-| ID | Entrée simulée | Résultat attendu |
+| ID | Situation | Résultat attendu |
 | --- | --- | --- |
-| P01 | Séries complètes, rapides et peu dispersées | STABLE / KEEP_CURRENT |
-| P02 | Android indique hasInternet = false | NO_INTERNET / CHECK_CONNECTION |
-| P03 | hasInternet = true, validated = false | NOT_VALIDATED / CHECK_CONNECTION |
-| P04 | Seulement 2 réponses TCP valides | INSUFFICIENT_DATA / RETEST |
-| P05 | 3 réussites sur 5 dans une série | UNSTABLE / RETEST |
-| P06 | Dispersion TCP supérieure à 50 % | UNSTABLE / RETEST |
-| P07 | Médiane TCP supérieure ou égale à 300 ms | SLOW_RESPONSES / COMPARE_NETWORKS |
-| P08 | Médiane HTTPS supérieure ou égale à 1 500 ms | SLOW_RESPONSES / COMPARE_NETWORKS |
-| P09 | Valeur de mesure nulle ou négative dans les échantillons | INSUFFICIENT_DATA / RETEST |
+| S01 | Aucun chemin courant mesurable | Sélection du chemin le plus rapide |
+| S02 | Alternative au moins 15 % plus rapide | Sélection de l'alternative |
+| S03 | Gain inférieur à 15 % | Conservation du chemin courant |
+| S04 | Candidat avec une seule réussite | Candidat ignoré |
+| S05 | Aucun candidat avec deux réussites | Aucune décision |
+| S06 | Latence nulle ou compteur incohérent | Candidat rejeté |
 
-Les scénarios P01 à P09 sont couverts par SmartNetworkOptimizerTest.kt.
+## Vérifications physiques obligatoires
 
-## Vérifications supplémentaires avant validation sur téléphone
+1. Installer l'APK debug sur un téléphone Android.
+2. Lancer l'optimisation avec un seul réseau disponible.
+3. Vérifier le résultat et confirmer que le trafic de NOVA BOOST LAB fonctionne encore.
+4. Si Wi-Fi et données mobiles sont simultanément disponibles, vérifier que les deux chemins sont listés séparément.
+5. Vérifier qu'une alternative n'est choisie que si le gain mesuré dépasse le seuil.
+6. Appuyer sur « Restaurer le chemin par défaut » et vérifier que l'application retrouve l'accès réseau normal.
+7. Couper le réseau pendant un essai et vérifier qu'aucune liaison obsolète n'est appliquée.
 
-1. Vérifier que la carte du moteur apparaît uniquement après un diagnostic terminé.
-2. Vérifier qu'un nouveau diagnostic efface l'ancienne recommandation pendant les mesures.
-3. Vérifier que l'interface reste lisible pour chaque état et pour les textes longs.
-4. Vérifier sur téléphone que l'application reste utilisable lorsque le réseau disparaît pendant le diagnostic.
-5. Comparer Wi-Fi et données mobiles manuellement, en conservant le même appareil, le même emplacement et les mêmes sondes. Noter l'heure et les conditions.
-6. Répéter chaque mesure plusieurs fois : une session unique ne suffit pas à calibrer les seuils.
+## Critères d'acceptation
 
-## Critères d'acceptation 0.3
-
-- Tous les tests unitaires de décision passent.
+- Tous les tests unitaires de sélection passent.
 - La compilation debug réussit.
-- Chaque état de décision est explicable dans l'interface.
-- Le moteur ne modifie aucun réglage réseau.
-- Aucun résultat simulé n'est présenté comme une performance mesurée.
-- Les limites TCP/HTTPS et l'absence de ping UDP de jeu sont visibles dans la documentation.
+- La liaison est appliquée uniquement après validation du réseau sélectionné.
+- La restauration du chemin par défaut est accessible.
+- L'interface indique explicitement que la liaison ne concerne que NOVA BOOST LAB.
+- Aucun résultat de simulation n'est présenté comme une mesure réelle.
 
 ## Hors périmètre
 
-La 0.3 ne comprend pas l'analyse des flux de jeu (0.4), l'infrastructure de relais (0.5), les tunnels ou le routage alternatif (0.6), ni l'orchestration centrale BOOST (0.7). Ces blocs ne doivent pas être introduits en avance sous forme de fonctions fictives ou de boutons sans implémentation.
+La version 0.3 ne route pas le trafic d'autres applications. L'analyse du trafic de jeu (0.4), l'infrastructure relais (0.5) et le tunnel/routage alternatif (0.6) restent des étapes distinctes de la feuille de route.
