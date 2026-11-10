@@ -19,7 +19,8 @@ Application Android indépendante qui compare les chemins réseau déjà disponi
 
 - Détection des réseaux Wi-Fi, cellulaires et Ethernet déjà disponibles et validés par Android.
 - Mesure HTTPS indépendante sur chaque chemin, via l'objet Android `Network`.
-- Trois essais par chemin candidat.
+- Sept sondes HTTPS par chemin candidat, avec au moins cinq réponses réussies exigées.
+- Après changement de chemin, trois sondes supplémentaires vérifient l'application ; au moins deux doivent réussir.
 - Comparaison des médianes et contrôle du nombre de réponses réussies.
 - Hystérésis : changement seulement si l'alternative est au moins 15 % plus rapide que le chemin courant mesuré.
 - Application réelle du chemin sélectionné au processus NOVA BOOST LAB avec `ConnectivityManager.bindProcessToNetwork`.
@@ -40,7 +41,8 @@ La branche `feature/wifi-neighbor-discovery` ajoute un scan manuel des points d'
 
 - Affichage des SSID diffusés, de la puissance reçue (dBm), de la bande de fréquence et du type de sécurité annoncé.
 - Classement par puissance du signal, avec une seule entrée par SSID (point d'accès au signal le plus fort).
-- Résultats explicitement signalés comme actualisés ou potentiellement issus du cache Android.
+- Résultats explicitement signalés comme actualisés ou potentiellement issus du cache Android ; refus de scan et délai dépassé sont également signalés.
+- Classification de sécurité distinguant notamment WPA3, WPA3 Enhanced Open (OWE), réseaux d'entreprise, WPA/WPA2, WEP et réseaux ouverts.
 - Autorisation de localisation précise et services de localisation requis selon les règles Android ; aucune coordonnée GPS n'est lue.
 - Aucun BSSID n'est affiché ou conservé ; aucun réseau n'est rejoint automatiquement.
 
@@ -58,4 +60,4 @@ gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
 
 APK debug : `app/build/outputs/apk/debug/app-debug.apk`.
 
-Les tests unitaires valident la politique de sélection. Un test sur téléphone reste nécessaire pour vérifier la visibilité des chemins réseau, la permission de liaison, le maintien de la connexion et la restauration du chemin par défaut.
+Les tests unitaires valident la politique de sélection, le classement des points d'accès, la classification de sécurité et les états de résultat du scan. Un test sur téléphone reste nécessaire pour vérifier la visibilité des chemins réseau, la permission de liaison, le maintien de la connexion et la restauration du chemin par défaut.
