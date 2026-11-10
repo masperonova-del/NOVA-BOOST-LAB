@@ -29,6 +29,10 @@ internal class WifiProfileHistory(context: Context) {
         preferences.edit().putString(profileId, encoded).apply()
     }
 
+    /** Counts old manually named entries without exposing or assigning them to real networks. */
+    fun legacyArchiveRunCount(): Int =
+        listOf("wifi_1", "wifi_2", "wifi_3").sumOf { readSamples(it).size }
+
     fun summary(profileId: String): WifiProfileSummary {
         val samples = readSamples(profileId)
         if (samples.isEmpty()) return WifiProfileSummary(0, null, null, null, null)
