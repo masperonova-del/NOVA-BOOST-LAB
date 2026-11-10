@@ -59,28 +59,28 @@ internal class NearbyWifiScanner(context: Context) {
 
         suspendCancellableCoroutine { continuation ->
             var receiverRegistered = false
-            lateinit var receiver: BroadcastReceiver
-            lateinit var finish: (WifiScanReport) -> Unit
-
-            val timeout = Runnable {
-                finish(WifiScanReport(
-                    readResults(),
-                    false,
-                    "Aucune actualisation reçue dans le délai Android. Les résultats affichés peuvent être anciens."
-                ))
-            }
+            var receiver: BroadcastReceiver? = null
+            var timeoutRunnable: Runnable? = null
 
             fun unregister() {
-                handler.removeCallbacks(timeout)
+                timeoutRunnable?.let(handler::removeCallbacks)
                 if (receiverRegistered) {
-                    runCatching { appContext.unregisterReceiver(receiver) }
+                    receiver?.let { registered -> runCatching { appContext.unregisterReceiver(registered) } }
                     receiverRegistered = false
                 }
             }
 
-            finish = { report ->
+            fun complete(report: WifiScanReport) {
                 unregister()
                 if (continuation.isActive) continuation.resume(report)
+            }
+
+            timeoutRunnable = Runnable {
+                complete(WifiScanReport(
+                    readResults(),
+                    false,
+                    "Aucune actualisation reçue dans le délai Android. Les résultats affichés peuvent être anciens."
+                ))
             }
 
             receiver = object : BroadcastReceiver() {
@@ -91,31 +91,32 @@ internal class NearbyWifiScanner(context: Context) {
                     } else {
                         "Android a renvoyé des résultats en cache ; ils peuvent ne pas refléter l'état actuel."
                     }
-                    finish(WifiScanReport(readResults(), updated, message))
+                    complete(WifiScanReport(readResults(), updated, message))
                 }
             }
 
             try {
                 val filter = IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)
+                val scanReceiver = receiver ?: error("Récepteur Wi-Fi indisponible")
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    appContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                    appContext.registerReceiver(scanReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
                 } else {
                     @Suppress("DEPRECATION")
-                    appContext.registerReceiver(receiver, filter)
+                    appContext.registerReceiver(scanReceiver, filter)
                 }
                 receiverRegistered = true
                 val accepted = runCatching { wifiManager.startScan() }.getOrDefault(false)
                 if (!accepted) {
-                    finish(WifiScanReport(
+                    complete(WifiScanReport(
                         readResults(),
                         false,
                         "Android a limité ou refusé une nouvelle recherche. Les résultats éventuellement affichés proviennent du cache."
                     ))
                 } else {
-                    handler.postDelayed(timeout, SCAN_TIMEOUT_MS)
+                    timeoutRunnable?.let { handler.postDelayed(it, SCAN_TIMEOUT_MS) }
                 }
             } catch (error: Exception) {
-                finish(WifiScanReport(
+                complete(WifiScanReport(
                     emptyList(),
                     false,
                     "Le scan Wi-Fi n'a pas pu démarrer : ${error.message ?: "erreur Android"}."
