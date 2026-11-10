@@ -56,7 +56,7 @@ internal object WifiScanStatus {
         "Android a limité ou refusé une nouvelle recherche. Les résultats éventuellement affichés proviennent du cache."
 
     fun timedOut(): String =
-        WifiScanStatus.timedOut()
+        "Aucune actualisation reçue dans le délai Android. Les résultats affichés peuvent être anciens."
 }
 
 internal object WifiSignalRanker {
@@ -109,7 +109,7 @@ internal class NearbyWifiScanner(context: Context) {
                 complete(WifiScanReport(
                     readResults(),
                     false,
-                    "Aucune actualisation reçue dans le délai Android. Les résultats affichés peuvent être anciens."
+                    WifiScanStatus.timedOut()
                 ))
             }
 
