@@ -80,8 +80,9 @@ private fun OptimizerScreen() {
             ?.removeSurrounding("\"")
         if (ssid != null) {
             detectedWifiSsid = ssid
-            activeWifiProfileId = historyStore.profileIdForSsid(ssid)
-            profileHistory = historyStore.summary(activeWifiProfileId)
+            val detectedProfileId = historyStore.profileIdForSsid(ssid)
+            activeWifiProfileId = detectedProfileId
+            profileHistory = historyStore.summary(detectedProfileId)
             wifiDetectionMessage = "Réseau détecté : $ssid. Historique associé automatiquement."
         } else {
             detectedWifiSsid = null
