@@ -29,9 +29,8 @@ internal object RelayCatalogPolicy {
     fun upsert(entries: List<RelayEntry>, entry: RelayEntry): List<RelayEntry> {
         val withoutSameId = entries.filterNot { it.id == entry.id }
         val withoutSameUrl = withoutSameId.filterNot { it.healthUrl.equals(entry.healthUrl, ignoreCase = true) }
-        return (withoutSameUrl + entry)
-            .sortedBy { it.name.lowercase() }
-            .take(MAX_ENTRIES)
+        val retained = withoutSameUrl.sortedBy { it.name.lowercase() }.take(MAX_ENTRIES - 1)
+        return (retained + entry).sortedBy { it.name.lowercase() }
     }
 
     const val MAX_ENTRIES = 20
