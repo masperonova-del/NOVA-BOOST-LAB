@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 private val Navy = Color(0xFF07111F)
@@ -133,6 +134,7 @@ private fun OptimizerScreen() {
     var networkAvailability by remember { mutableStateOf(optimizer.readNetworkAvailability()) }
     val trafficAnalyzer = remember(context) { GamingTrafficAnalyzer(context.applicationContext) }
     var analyzingTraffic by remember { mutableStateOf(false) }
+    var trafficJob by remember { mutableStateOf<Job?>(null) }
     var trafficProgress by remember { mutableIntStateOf(0) }
     var trafficMessage by remember { mutableStateOf("Aucune session d'analyse effectuée.") }
     var trafficSummary by remember { mutableStateOf<GamingTrafficSummary?>(null) }
@@ -202,7 +204,7 @@ private fun OptimizerScreen() {
             PanelCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("GAMING TRAFFIC ANALYZER", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Text("SESSION 30 S", color = Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("20 SONDES", color = Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.height(7.dp))
                 Text(
@@ -212,32 +214,38 @@ private fun OptimizerScreen() {
                 Spacer(Modifier.height(10.dp))
                 Button(
                     onClick = {
-                        scope.launch {
-                            analyzingTraffic = true
-                            trafficProgress = 0
-                            trafficSummary = null
-                            trafficMessage = "Préparation de la session…"
-                            try {
-                                val result = trafficAnalyzer.runSession { completed, total ->
-                                    trafficProgress = completed
-                                    trafficMessage = "Sonde $completed/$total"
+                        if (analyzingTraffic) {
+                            trafficJob?.cancel()
+                        } else {
+                            trafficJob = scope.launch {
+                                analyzingTraffic = true
+                                trafficProgress = 0
+                                trafficSummary = null
+                                trafficMessage = "Préparation de la session…"
+                                try {
+                                    val result = trafficAnalyzer.runSession { completed, total ->
+                                        trafficProgress = completed
+                                        trafficMessage = "Sonde $completed/$total"
+                                    }
+                                    trafficSummary = result
+                                    trafficMessage = "Session terminée en ${result.durationMs / 1000L} s."
+                                } catch (cancelled: CancellationException) {
+                                    trafficMessage = "Analyse annulée."
+                                    throw cancelled
+                                } catch (error: Exception) {
+                                    trafficMessage = "Analyse interrompue : ${error.message ?: "erreur inconnue"}."
+                                } finally {
+                                    analyzingTraffic = false
+                                    trafficJob = null
                                 }
-                                trafficSummary = result
-                                trafficMessage = "Session terminée en ${result.durationMs / 1000L} s."
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (error: Exception) {
-                                trafficMessage = "Analyse interrompue : ${error.message ?: "erreur inconnue"}."
-                            } finally {
-                                analyzingTraffic = false
                             }
                         }
                     },
-                    enabled = !analyzingTraffic && !running && !scanningNearbyWifi,
+                    enabled = !running && !scanningNearbyWifi,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(if (analyzingTraffic) "ANALYSE EN COURS…" else "LANCER L'ANALYSE GAMING")
+                    Text(if (analyzingTraffic) "ARRÊTER L'ANALYSE" else "LANCER L'ANALYSE GAMING")
                 }
                 if (analyzingTraffic) {
                     LinearProgressIndicator(
@@ -255,7 +263,7 @@ private fun OptimizerScreen() {
                     MetricLine("Temps de réponse médian", summary.medianResponseMs?.let { "$it ms" } ?: "Indisponible")
                     MetricLine("Variation médiane des réponses", summary.medianResponseVariationMs?.let { "$it ms" } ?: "Données insuffisantes")
                     MetricLine(
-                        "Pertes du réseau par défaut (Android)",
+                        "Événements onLost réseau par défaut",
                         if (summary.networkEventMonitoringAvailable) summary.defaultNetworkLossEvents.toString() else "Surveillance indisponible"
                     )
                     MetricLine("Réseaux observés", summary.observedTransports.joinToString().ifBlank { "Aucun" })
