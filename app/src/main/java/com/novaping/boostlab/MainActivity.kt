@@ -27,7 +27,6 @@ import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -152,6 +151,12 @@ private fun OptimizerScreen() {
         }
     }
 
+    val refreshNetworkSnapshot: () -> Unit = {
+        networkAvailability = optimizer.readNetworkAvailability()
+        if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            refreshConnectedWifi()
+        }
+    }
     val networkManager = remember(context) {
         context.applicationContext.getSystemService(ConnectivityManager::class.java)
     }
@@ -159,15 +164,15 @@ private fun OptimizerScreen() {
         var callbackRegistered = false
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                networkAvailability = optimizer.readNetworkAvailability()
+                refreshNetworkSnapshot()
             }
 
             override fun onLost(network: Network) {
-                networkAvailability = optimizer.readNetworkAvailability()
+                refreshNetworkSnapshot()
             }
 
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-                networkAvailability = optimizer.readNetworkAvailability()
+                refreshNetworkSnapshot()
             }
         }
 
@@ -186,7 +191,7 @@ private fun OptimizerScreen() {
                 // The initial snapshot remains available if live monitoring is restricted.
             }
         }
-        networkAvailability = optimizer.readNetworkAvailability()
+        refreshNetworkSnapshot()
 
         onDispose {
             if (callbackRegistered && networkManager != null) {
