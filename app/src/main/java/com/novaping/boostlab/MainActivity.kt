@@ -166,6 +166,20 @@ private fun OptimizerScreen() {
     val networkManager = remember(context) {
         context.applicationContext.getSystemService(ConnectivityManager::class.java)
     }
+    val defaultNetwork = networkManager?.activeNetwork
+    val defaultCapabilities = defaultNetwork?.let { networkManager?.getNetworkCapabilities(it) }
+    val tunnelReadiness = TunnelReadinessEvaluator.evaluate(
+        TunnelPrerequisites(
+            validatedNetworkAvailable =
+                defaultCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
+                    defaultCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+            relayHealthVerified = relayProbeResult?.reachable == true,
+            relayProtocolCompatible = false,
+            vpnConsentGranted = false,
+            anotherVpnActive = defaultCapabilities?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+        )
+    )
+
     DisposableEffect(networkManager) {
         var callbackRegistered = false
         val callback = object : ConnectivityManager.NetworkCallback() {
@@ -236,7 +250,7 @@ private fun OptimizerScreen() {
                 }
                 Surface(color = Color(0xFF173B36), shape = CircleShape) {
                     Text(
-                        "0.5.0",
+                        "0.6.0",
                         color = Mint,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -653,6 +667,29 @@ private fun OptimizerScreen() {
                 }
                 Text(
                     "Sécurité : HTTPS uniquement, sans identifiants intégrés à l'URL. Aucun mot de passe ni jeton n'est demandé.",
+                    color = Muted, fontSize = 10.sp, lineHeight = 15.sp
+                )
+            }
+
+            PanelCard {
+                Text("TUNNEL & ROUTAGE ALTERNATIF", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(7.dp))
+                val readinessMessage = when (tunnelReadiness) {
+                    TunnelReadiness.READY -> "Prérequis satisfaits. Le démarrage restera désactivé tant que le moteur de transport n'aura pas été intégré."
+                    TunnelReadiness.BLOCKED_BY_EXISTING_VPN -> "Un VPN est déjà actif. NOVA BOOST LAB ne tentera pas de le contourner."
+                    TunnelReadiness.WAITING_FOR_VALIDATED_NETWORK -> "Aucun réseau Internet validé n'est disponible."
+                    TunnelReadiness.RELAY_HEALTH_CHECK_REQUIRED -> "Vérifie d'abord un point de contrôle HTTPS dans la section Infrastructure Relay."
+                    TunnelReadiness.RELAY_PROTOCOL_NOT_IMPLEMENTED -> "Point de contrôle joignable, mais protocole de transport relais non implémenté."
+                    TunnelReadiness.VPN_CONSENT_REQUIRED -> "L'autorisation VPN Android sera demandée uniquement lorsqu'un tunnel fonctionnel sera disponible."
+                }
+                Text(readinessMessage, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                Spacer(Modifier.height(8.dp))
+                MetricLine("Réseau par défaut", if (tunnelReadiness == TunnelReadiness.WAITING_FOR_VALIDATED_NETWORK) "Non validé" else "Vérifié / à confirmer")
+                MetricLine("Point de contrôle", if (relayProbeResult?.reachable == true) "HTTPS joignable" else "Non vérifié")
+                MetricLine("Transport relais", "Non implémenté")
+                MetricLine("Tunnel VPN", "Inactif")
+                Text(
+                    "Aucun VPN n'est démarré et aucun trafic n'est redirigé dans cette version. Le routage restera fermé par défaut tant qu'un serveur relais compatible et son protocole ne seront pas disponibles.",
                     color = Muted, fontSize = 10.sp, lineHeight = 15.sp
                 )
             }
