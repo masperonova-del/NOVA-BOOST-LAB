@@ -19,6 +19,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Summary of app-owned HTTPS probes. These values are not game-packet telemetry.
@@ -112,12 +113,15 @@ internal class GamingTrafficAnalyzer(context: Context) {
         val observedTransports = ConcurrentHashMap.newKeySet<String>()
         val networkLossEvents = AtomicInteger(0)
         val networkChanges = Channel<Unit>(Channel.CONFLATED)
+        val activeProbeNetwork = AtomicReference<Network?>(null)
+        val activeConnection = AtomicReference<HttpURLConnection?>(null)
         var monitoringAvailable = false
         var callbackRegistered = false
         var interruptedForNoValidatedNetwork = false
 
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
+                abortProbeIfDefaultRouteChanged(activeProbeNetwork, activeConnection)
                 manager?.getNetworkCapabilities(network)?.let { capabilities ->
                     transportLabel(capabilities)?.let(observedTransports::add)
                 }
@@ -127,12 +131,25 @@ internal class GamingTrafficAnalyzer(context: Context) {
 
             override fun onLost(network: Network) {
                 networkLossEvents.incrementAndGet()
+                if (activeProbeNetwork.get() == network) {
+                    abortActiveProbe(activeConnection)
+                } else {
+                    abortProbeIfDefaultRouteChanged(activeProbeNetwork, activeConnection)
+                }
                 networkChanges.trySend(Unit)
                 onNetworkState("Perte du réseau par défaut détectée. Recherche d'un autre chemin…")
             }
 
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                 transportLabel(capabilities)?.let(observedTransports::add)
+                if (activeProbeNetwork.get() == network &&
+                    (!capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+                        !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED))
+                ) {
+                    abortActiveProbe(activeConnection)
+                } else {
+                    abortProbeIfDefaultRouteChanged(activeProbeNetwork, activeConnection)
+                }
                 networkChanges.trySend(Unit)
                 onNetworkState(
                     "Réseau actualisé : " + (transportLabel(capabilities) ?: "type non identifié") +
@@ -171,7 +188,12 @@ internal class GamingTrafficAnalyzer(context: Context) {
                 val label = transportLabel(capabilities) ?: "Réseau par défaut"
                 onNetworkState(label + " actif • sonde " + (index + 1) + "/" + PROBE_COUNT)
 
-                val responseTime = probe(network)
+                activeProbeNetwork.set(network)
+                val responseTime = try {
+                    probe(network, activeConnection)
+                } finally {
+                    activeProbeNetwork.compareAndSet(network, null)
+                }
                 currentCoroutineContext().ensureActive()
 
                 // A response from a route that ceased to be the Android default during
@@ -256,10 +278,16 @@ internal class GamingTrafficAnalyzer(context: Context) {
         return network.takeIf { hasInternet && isValidated }
     }
 
-    private suspend fun probe(network: Network): Long? = withContext(Dispatchers.IO) {
+    private suspend fun probe(
+        network: Network,
+        activeConnection: AtomicReference<HttpURLConnection?>
+    ): Long? = withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null
         try {
             connection = network.openConnection(URL(PROBE_URL)) as HttpURLConnection
+            activeConnection.set(connection)
+            if (validatedDefaultNetwork(connectivity) != network) return@withContext null
+
             connection.connectTimeout = PROBE_TIMEOUT_MS
             connection.readTimeout = PROBE_TIMEOUT_MS
             connection.requestMethod = "GET"
@@ -274,7 +302,28 @@ internal class GamingTrafficAnalyzer(context: Context) {
         } catch (_: Exception) {
             null
         } finally {
-            connection?.disconnect()
+            if (connection != null) {
+                activeConnection.compareAndSet(connection, null)
+                connection.disconnect()
+            }
+        }
+    }
+
+    private fun abortProbeIfDefaultRouteChanged(
+        activeProbeNetwork: AtomicReference<Network?>,
+        activeConnection: AtomicReference<HttpURLConnection?>
+    ) {
+        val networkBeingProbed = activeProbeNetwork.get() ?: return
+        if (connectivity?.activeNetwork != networkBeingProbed) {
+            abortActiveProbe(activeConnection)
+        }
+    }
+
+    private fun abortActiveProbe(activeConnection: AtomicReference<HttpURLConnection?>) {
+        try {
+            activeConnection.getAndSet(null)?.disconnect()
+        } catch (_: Exception) {
+            // The request will still terminate through its configured network timeout.
         }
     }
 
