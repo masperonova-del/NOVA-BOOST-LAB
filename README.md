@@ -1,4 +1,4 @@
-# NOVA BOOST LAB 0.5.0 — Infrastructure Relay
+# NOVA BOOST LAB 0.6.0 — Tunnel & Alternative Routing
 
 Application Android indépendante qui compare les chemins réseau déjà disponibles et peut lier le processus NOVA BOOST LAB au chemin mesuré comme le plus intéressant.
 
@@ -79,6 +79,15 @@ Les sondes utilisent HTTPS vers `https://www.google.com/generate_204`. La pause 
 - Aucun secret ni jeton n'est demandé ou conservé.
 
 **Limite fonctionnelle :** 0.5.0 vérifie la disponibilité d'un endpoint de santé. Cela ne prouve pas qu'un serveur relaie des paquets et ne crée pas de tunnel. Aucun serveur relais n'est fourni dans le dépôt ; aucun trafic CODM ou d'une autre application n'est redirigé.
+
+## Fonctionnalités ajoutées en 0.6.0 — Tunnel et routage alternatif
+
+- Évaluation explicite des prérequis avant tout futur démarrage VPN : réseau par défaut validé, contrôle de santé du relais, compatibilité du protocole, consentement Android et absence d'un autre VPN actif.
+- Politique de routage fermée par défaut : un tunnel ne peut être retenu que s'il est établi, si le relais amont est sain et si le réseau reste validé ; sinon la politique demande le retour au chemin Android par défaut.
+- État de préparation présenté dans l'interface, avec indication explicite du protocole relais manquant.
+- Tests unitaires des états bloquants, de l'état prêt et des décisions de repli.
+
+**Limite fonctionnelle importante :** cette version ne démarre pas encore de `VpnService` et ne redirige aucun paquet. Le point de contrôle HTTPS de 0.5.0 n'est pas un protocole de relais. Il manque un serveur amont compatible et son protocole de transport ; démarrer un VPN sans transfert amont fonctionnel risquerait de couper Internet. L'autorisation VPN Android n'est donc pas demandée prématurément.
 
 ## Tests et compilation
 
