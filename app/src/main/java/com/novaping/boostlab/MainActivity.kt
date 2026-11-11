@@ -131,6 +131,11 @@ private fun OptimizerScreen() {
     }
     var report by remember { mutableStateOf<OptimizationReport?>(null) }
     var networkAvailability by remember { mutableStateOf(optimizer.readNetworkAvailability()) }
+    val trafficAnalyzer = remember(context) { GamingTrafficAnalyzer(context.applicationContext) }
+    var analyzingTraffic by remember { mutableStateOf(false) }
+    var trafficProgress by remember { mutableIntStateOf(0) }
+    var trafficMessage by remember { mutableStateOf("Aucune session d'analyse effectuée.") }
+    var trafficSummary by remember { mutableStateOf<GamingTrafficSummary?>(null) }
 
     LaunchedEffect(Unit) {
         if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
@@ -160,11 +165,11 @@ private fun OptimizerScreen() {
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text("NOVA BOOST LAB", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                    Text("ACTIVE NETWORK OPTIMIZER", color = Muted, fontSize = 10.sp, letterSpacing = 1.4.sp)
+                    Text("NETWORK & GAMING ANALYZER", color = Muted, fontSize = 10.sp, letterSpacing = 1.2.sp)
                 }
                 Surface(color = Color(0xFF173B36), shape = CircleShape) {
                     Text(
-                        "0.3.0",
+                        "0.4.0",
                         color = Mint,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -193,6 +198,74 @@ private fun OptimizerScreen() {
                 )
             }
 
+
+            PanelCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("GAMING TRAFFIC ANALYZER", fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text("SESSION 30 S", color = Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    "Lance une session de 20 sondes HTTPS espacées d'environ 1,5 seconde sur le réseau Android par défaut. L'analyse observe les temps de réponse, leur variation et les événements de perte du réseau signalés par Android.",
+                    color = Muted, fontSize = 11.sp, lineHeight = 16.sp
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = {
+                        scope.launch {
+                            analyzingTraffic = true
+                            trafficProgress = 0
+                            trafficSummary = null
+                            trafficMessage = "Préparation de la session…"
+                            try {
+                                val result = trafficAnalyzer.runSession { completed, total ->
+                                    trafficProgress = completed
+                                    trafficMessage = "Sonde $completed/$total"
+                                }
+                                trafficSummary = result
+                                trafficMessage = "Session terminée en ${result.durationMs / 1000L} s."
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                trafficMessage = "Analyse interrompue : ${error.message ?: "erreur inconnue"}."
+                            } finally {
+                                analyzingTraffic = false
+                            }
+                        }
+                    },
+                    enabled = !analyzingTraffic && !running && !scanningNearbyWifi,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(if (analyzingTraffic) "ANALYSE EN COURS…" else "LANCER L'ANALYSE GAMING")
+                }
+                if (analyzingTraffic) {
+                    LinearProgressIndicator(
+                        progress = trafficProgress / 20f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Text(trafficMessage, color = Blue, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                trafficSummary?.let { summary ->
+                    Spacer(Modifier.height(8.dp))
+                    HorizontalDivider(color = Border)
+                    Spacer(Modifier.height(8.dp))
+                    MetricLine("Sondes HTTPS réussies", "${summary.successfulProbes}/${summary.totalProbes} (${summary.successRatePercent} %)")
+                    MetricLine("Sondes en échec", summary.failedProbes.toString())
+                    MetricLine("Temps de réponse médian", summary.medianResponseMs?.let { "$it ms" } ?: "Indisponible")
+                    MetricLine("Variation médiane des réponses", summary.medianResponseVariationMs?.let { "$it ms" } ?: "Données insuffisantes")
+                    MetricLine(
+                        "Pertes du réseau par défaut (Android)",
+                        if (summary.networkEventMonitoringAvailable) summary.defaultNetworkLossEvents.toString() else "Surveillance indisponible"
+                    )
+                    MetricLine("Réseaux observés", summary.observedTransports.joinToString().ifBlank { "Aucun" })
+                    Text(
+                        "Interprétation : les temps et leur variation proviennent de sondes HTTPS vers un serveur externe. Les échecs sont des échecs de sondes, pas une mesure des pertes de paquets de CODM. Cette analyse ne lit ni ne modifie le trafic d'autres applications.",
+                        color = Muted, fontSize = 10.sp, lineHeight = 15.sp
+                    )
+                }
+            }
+
             PanelCard {
                 Text("HISTORIQUE WI-FI", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(7.dp))
@@ -209,7 +282,7 @@ private fun OptimizerScreen() {
                             wifiPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                         }
                     },
-                    enabled = !running,
+                    enabled = !running && !analyzingTraffic,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -278,7 +351,7 @@ private fun OptimizerScreen() {
                             nearbyWifiPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                         }
                     },
-                    enabled = !scanningNearbyWifi && !running,
+                    enabled = !scanningNearbyWifi && !running && !analyzingTraffic,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -354,7 +427,7 @@ private fun OptimizerScreen() {
                             }
                         }
                     },
-                    enabled = !running && !restoring,
+                    enabled = !running && !restoring && !analyzingTraffic,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(13.dp)
                 ) {
@@ -444,7 +517,7 @@ private fun OptimizerScreen() {
             }
 
             Text(
-                "NOVA BOOST LAB • MOTEUR DE SÉLECTION DE CHEMIN",
+                "NOVA BOOST LAB • ANALYSE RÉSEAU ET SÉLECTION DE CHEMIN",
                 color = Muted, fontSize = 9.sp, modifier = Modifier.align(Alignment.CenterHorizontally)
             )
         }
@@ -477,6 +550,18 @@ private fun NearbyWifiRow(network: NearbyWifiNetwork) {
         Column(horizontalAlignment = Alignment.End) {
             Text("$signalLabel • ${network.signalDbm} dBm", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         }
+    }
+}
+
+
+@Composable
+private fun MetricLine(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, modifier = Modifier.weight(1f), color = Muted, fontSize = 11.sp)
+        Text(value, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
