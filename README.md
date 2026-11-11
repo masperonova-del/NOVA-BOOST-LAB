@@ -1,4 +1,4 @@
-# NOVA BOOST LAB 0.3.0 — Active Network Path Optimizer
+# NOVA BOOST LAB 0.4.0 — Gaming Traffic Analyzer + Active Network Path Optimizer
 
 Application Android indépendante qui compare les chemins réseau déjà disponibles et peut lier le processus NOVA BOOST LAB au chemin mesuré comme le plus intéressant.
 
@@ -9,6 +9,7 @@ Application Android indépendante qui compare les chemins réseau déjà disponi
 | 0.1 | Moteur indépendant initial |
 | 0.2 | Fiabilisation et compilation |
 | **0.3** | **Smart Network Optimizer** |
+| **0.4** | **Gaming Traffic Analyzer** |
 | 0.4 | Gaming Traffic Analyzer |
 | 0.5 | Infrastructure Relay |
 | 0.6 | Tunnel et routage alternatif |
@@ -49,6 +50,22 @@ La branche `feature/wifi-neighbor-discovery` ajoute un scan manuel des points d'
 **Limite de mesure :** le scan radio ne permet pas de connaître le ping, le débit, la congestion réelle ni la qualité Internet d'un réseau auquel le téléphone n'est pas connecté. Il sert uniquement à repérer et comparer la puissance des signaux reçus. La connexion à un autre réseau reste une action de l'utilisateur.
 
 Cette évolution est isolée sur une branche expérimentale et ne modifie pas la version publiée 0.3.0 ni la feuille de route officielle.
+
+
+## Fonctionnalités ajoutées en 0.4.0 — Gaming Traffic Analyzer
+
+- Session d'analyse manuelle au premier plan : 20 sondes HTTPS espacées d'environ 1,5 seconde.
+- Sondes exécutées sur le réseau Android par défaut, sans changer le routage du processus.
+- Mesure du temps de réponse HTTPS médian et du taux de réussite des sondes.
+- Variation médiane des temps de réponse entre sondes adjacentes réussies, explicitement présentée comme un indicateur indirect de stabilité et non comme le jitter UDP du jeu.
+- Comptage des événements de perte du réseau par défaut signalés par `ConnectivityManager.NetworkCallback`, lorsque l'enregistrement du callback est autorisé.
+- Résultats sans données inventées : si aucune sonde ne réussit, les latences restent indisponibles.
+- Annulation coroutine respectée, délais réseau bornés et callback toujours désenregistré en fin de session.
+- Aucun service en arrière-plan, aucune collecte distante, aucun serveur payant et aucune permission Android supplémentaire.
+
+### Limites de mesure en 0.4.0
+
+Les sondes utilisent HTTPS vers `https://www.google.com/generate_204`. Elles mesurent le temps de réponse complet de la requête (réseau, DNS éventuel, TCP, TLS et serveur), pas un ping ICMP ou UDP. Les échecs comptabilisés sont des échecs de sondes HTTPS, pas des pertes de paquets du jeu. Les événements de perte rapportés par Android décrivent les événements du réseau par défaut, pas chaque microcoupure d'un flux applicatif. L'application ne lit pas, ne déchiffre pas et ne redirige pas le trafic de Call of Duty Mobile ou d'une autre application.
 
 ## Tests et compilation
 
