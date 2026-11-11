@@ -4,13 +4,17 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
@@ -28,7 +32,8 @@ internal data class GamingTrafficSummary(
     val defaultNetworkLossEvents: Int,
     val networkEventMonitoringAvailable: Boolean,
     val durationMs: Long,
-    val observedTransports: List<String>
+    val observedTransports: List<String>,
+    val interruptedForNoValidatedNetwork: Boolean = false
 ) {
     val successRatePercent: Int
         get() = if (totalProbes == 0) 0 else (successfulProbes * 100) / totalProbes
@@ -40,7 +45,8 @@ internal object GamingTrafficMetricsCalculator {
         defaultNetworkLossEvents: Int,
         networkEventMonitoringAvailable: Boolean,
         durationMs: Long,
-        observedTransports: Set<String>
+        observedTransports: Set<String>,
+        interruptedForNoValidatedNetwork: Boolean = false
     ): GamingTrafficSummary {
         val valid = samples.map { value -> value?.takeIf { it > 0L } }
         val successful = valid.count { it != null }
@@ -57,7 +63,8 @@ internal object GamingTrafficMetricsCalculator {
             defaultNetworkLossEvents = defaultNetworkLossEvents.coerceAtLeast(0),
             networkEventMonitoringAvailable = networkEventMonitoringAvailable,
             durationMs = durationMs.coerceAtLeast(0L),
-            observedTransports = observedTransports.toList().sorted()
+            observedTransports = observedTransports.toList().sorted(),
+            interruptedForNoValidatedNetwork = interruptedForNoValidatedNetwork
         )
     }
 
@@ -76,34 +83,49 @@ internal object GamingTrafficMetricsCalculator {
 }
 
 /**
- * Runs a bounded foreground-only observation session using HTTPS response probes
- * over Android's current default network. It does not inspect or redirect other apps.
+ * Runs a bounded foreground-only observation session using Android's current default
+ * network. Network switches are re-evaluated between probes. It does not inspect or
+ * redirect traffic belonging to other apps.
  */
 internal class GamingTrafficAnalyzer(context: Context) {
     private val connectivity = context.applicationContext
         .getSystemService(ConnectivityManager::class.java)
 
-    suspend fun runSession(onProgress: (completed: Int, total: Int) -> Unit): GamingTrafficSummary {
+    suspend fun runSession(
+        onProgress: (completed: Int, total: Int) -> Unit,
+        onNetworkState: (message: String) -> Unit
+    ): GamingTrafficSummary {
         val manager = connectivity
         val samples = mutableListOf<Long?>()
         val observedTransports = ConcurrentHashMap.newKeySet<String>()
         val networkLossEvents = AtomicInteger(0)
+        val networkChanges = Channel<Unit>(Channel.CONFLATED)
         var monitoringAvailable = false
         var callbackRegistered = false
+        var interruptedForNoValidatedNetwork = false
 
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 manager?.getNetworkCapabilities(network)?.let { capabilities ->
                     transportLabel(capabilities)?.let(observedTransports::add)
                 }
+                networkChanges.trySend(Unit)
+                onNetworkState("Réseau disponible détecté. Actualisation du chemin actif…")
             }
 
             override fun onLost(network: Network) {
                 networkLossEvents.incrementAndGet()
+                networkChanges.trySend(Unit)
+                onNetworkState("Perte du réseau par défaut détectée. Recherche d'un autre chemin…")
             }
 
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                 transportLabel(capabilities)?.let(observedTransports::add)
+                networkChanges.trySend(Unit)
+                onNetworkState(
+                    "Réseau actualisé : " + (transportLabel(capabilities) ?: "type non identifié") +
+                        ". Vérification de l'accès Internet…"
+                )
             }
         }
 
@@ -111,49 +133,56 @@ internal class GamingTrafficAnalyzer(context: Context) {
         try {
             if (manager != null) {
                 try {
-                    manager.registerDefaultNetworkCallback(callback)
+                    manager.registerDefaultNetworkCallback(callback, Handler(Looper.getMainLooper()))
                     callbackRegistered = true
                     monitoringAvailable = true
                 } catch (_: Exception) {
-                    // Probes remain useful when callback registration is restricted.
                     monitoringAvailable = false
+                    onNetworkState("Surveillance événementielle indisponible ; vérification périodique du réseau activée.")
                 }
             }
 
-            repeat(PROBE_COUNT) { index ->
+            for (index in 0 until PROBE_COUNT) {
                 currentCoroutineContext().ensureActive()
-                val network = manager?.activeNetwork
-                val capabilities = if (manager != null && network != null) {
-                    manager.getNetworkCapabilities(network)
-                } else {
-                    null
-                }
-                val validated = capabilities != null &&
-                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
 
-                if (network != null && capabilities != null) {
-                    transportLabel(capabilities)?.let(observedTransports::add)
+                val network = awaitValidatedDefaultNetwork(manager, networkChanges, onNetworkState)
+                if (network == null) {
+                    interruptedForNoValidatedNetwork = true
+                    onNetworkState(
+                        "Analyse arrêtée : aucun réseau Internet validé n'est revenu après " +
+                            NETWORK_RECOVERY_GRACE_MS + " ms."
+                    )
+                    break
                 }
 
-                val responseTime = if (network != null && validated) {
-                    probe(network)
-                } else {
-                    null
-                }
-                samples += responseTime
+                val capabilities = manager?.getNetworkCapabilities(network)
+                val label = transportLabel(capabilities) ?: "Réseau par défaut"
+                onNetworkState(label + " actif • sonde " + (index + 1) + "/" + PROBE_COUNT)
+
+                val responseTime = probe(network)
+                currentCoroutineContext().ensureActive()
+
+                // A response from a route that ceased to be the Android default during
+                // the request is discarded rather than attributed to the new route.
+                val stillCurrent = validatedDefaultNetwork(manager) == network
+                samples += if (stillCurrent) responseTime else null
                 onProgress(index + 1, PROBE_COUNT)
 
-                if (index < PROBE_COUNT - 1) delay(INTERVAL_MS)
+                if (!stillCurrent) {
+                    onNetworkState("Changement de chemin détecté. La mesure précédente est écartée ; réévaluation…")
+                } else if (index < PROBE_COUNT - 1) {
+                    delay(INTERVAL_MS)
+                }
             }
         } finally {
             if (callbackRegistered && manager != null) {
                 try {
                     manager.unregisterNetworkCallback(callback)
                 } catch (_: Exception) {
-                    // The session result remains valid; callback cleanup is best-effort.
+                    // Callback cleanup is best-effort; the session result remains usable.
                 }
             }
+            networkChanges.close()
         }
 
         return GamingTrafficMetricsCalculator.calculate(
@@ -161,8 +190,55 @@ internal class GamingTrafficAnalyzer(context: Context) {
             defaultNetworkLossEvents = networkLossEvents.get(),
             networkEventMonitoringAvailable = monitoringAvailable,
             durationMs = SystemClock.elapsedRealtime() - startedAt,
-            observedTransports = observedTransports
+            observedTransports = observedTransports,
+            interruptedForNoValidatedNetwork = interruptedForNoValidatedNetwork
         )
+    }
+
+    /**
+     * Returns the active default network only when Android currently marks it as
+     * internet-capable and validated. Brief handovers get a bounded recovery window.
+     */
+    private suspend fun awaitValidatedDefaultNetwork(
+        manager: ConnectivityManager?,
+        networkChanges: Channel<Unit>,
+        onNetworkState: (String) -> Unit
+    ): Network? {
+        if (manager == null) {
+            onNetworkState("Gestionnaire de connectivité indisponible.")
+            return null
+        }
+
+        val deadline = SystemClock.elapsedRealtime() + NETWORK_RECOVERY_GRACE_MS
+        var waitingMessageSent = false
+
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val active = validatedDefaultNetwork(manager)
+            if (active != null) return active
+
+            if (!waitingMessageSent) {
+                onNetworkState("Aucun réseau Internet validé. Attente d'un rétablissement ou d'un basculement…")
+                waitingMessageSent = true
+            }
+
+            val remaining = deadline - SystemClock.elapsedRealtime()
+            if (remaining <= 0L) return null
+
+            // Callback events wake the check immediately. The short timeout also
+            // handles devices where callback registration is unavailable.
+            withTimeoutOrNull(minOf(remaining, NETWORK_RECHECK_INTERVAL_MS)) {
+                networkChanges.receive()
+            }
+        }
+    }
+
+    private fun validatedDefaultNetwork(manager: ConnectivityManager?): Network? {
+        val network = manager?.activeNetwork ?: return null
+        val capabilities = manager.getNetworkCapabilities(network) ?: return null
+        val hasInternet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        val isValidated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        return network.takeIf { hasInternet && isValidated }
     }
 
     private suspend fun probe(network: Network): Long? = withContext(Dispatchers.IO) {
@@ -187,7 +263,8 @@ internal class GamingTrafficAnalyzer(context: Context) {
         }
     }
 
-    private fun transportLabel(capabilities: NetworkCapabilities): String? = when {
+    private fun transportLabel(capabilities: NetworkCapabilities?): String? = when {
+        capabilities == null -> null
         capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
         capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Données mobiles"
         capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
@@ -199,6 +276,8 @@ internal class GamingTrafficAnalyzer(context: Context) {
         const val PROBE_COUNT = 20
         const val INTERVAL_MS = 1_500L
         const val PROBE_TIMEOUT_MS = 1_800
+        const val NETWORK_RECOVERY_GRACE_MS = 2_500L
+        const val NETWORK_RECHECK_INTERVAL_MS = 250L
         const val EXPECTED_STATUS = 204
         const val PROBE_URL = "https://www.google.com/generate_204"
     }
