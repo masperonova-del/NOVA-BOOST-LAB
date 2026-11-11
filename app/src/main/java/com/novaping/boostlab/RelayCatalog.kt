@@ -12,6 +12,7 @@ internal data class RelayEntry(
     val id: String,
     val name: String,
     val healthUrl: String,
+    val protocol: String = "HTTPS_HEALTH_ONLY",
     val enabled: Boolean = true,
     val lastCheckedAtMs: Long? = null,
     val reachable: Boolean? = null,
@@ -61,6 +62,7 @@ internal class RelayCatalogRepository(context: Context) {
                 put("id", entry.id)
                 put("name", entry.name)
                 put("healthUrl", entry.healthUrl)
+                put("protocol", entry.protocol)
                 put("enabled", entry.enabled)
                 put("lastCheckedAtMs", entry.lastCheckedAtMs ?: JSONObject.NULL)
                 put("reachable", entry.reachable ?: JSONObject.NULL)
@@ -83,6 +85,7 @@ internal class RelayCatalogRepository(context: Context) {
                             id = item.getString("id"),
                             name = item.getString("name"),
                             healthUrl = item.getString("healthUrl"),
+                            protocol = item.optString("protocol", "HTTPS_HEALTH_ONLY"),
                             enabled = item.optBoolean("enabled", true),
                             lastCheckedAtMs = item.nullableLong("lastCheckedAtMs"),
                             reachable = item.nullableBoolean("reachable"),
