@@ -10,7 +10,6 @@ Application Android indépendante qui compare les chemins réseau déjà disponi
 | 0.2 | Fiabilisation et compilation |
 | **0.3** | **Smart Network Optimizer** |
 | **0.4** | **Gaming Traffic Analyzer** |
-| 0.4 | Gaming Traffic Analyzer |
 | 0.5 | Infrastructure Relay |
 | 0.6 | Tunnel et routage alternatif |
 | 0.7 | Moteur BOOST central |
@@ -54,7 +53,7 @@ Cette évolution est isolée sur une branche expérimentale et ne modifie pas la
 
 ## Fonctionnalités ajoutées en 0.4.0 — Gaming Traffic Analyzer
 
-- Session d'analyse manuelle au premier plan : 20 sondes HTTPS espacées d'environ 1,5 seconde.
+- Session d'analyse manuelle au premier plan : 20 sondes HTTPS, avec une pause d'environ 1,5 seconde après chaque réponse ; la durée réelle dépend donc du temps de réponse du réseau (environ 30 à 65 secondes dans le pire cas avec les délais configurés).
 - Sondes exécutées sur le réseau Android par défaut, sans changer le routage du processus.
 - Mesure du temps de réponse HTTPS médian et du taux de réussite des sondes.
 - Variation médiane des temps de réponse entre sondes adjacentes réussies, explicitement présentée comme un indicateur indirect de stabilité et non comme le jitter UDP du jeu.
@@ -65,7 +64,7 @@ Cette évolution est isolée sur une branche expérimentale et ne modifie pas la
 
 ### Limites de mesure en 0.4.0
 
-Les sondes utilisent HTTPS vers `https://www.google.com/generate_204`. Elles mesurent le temps de réponse complet de la requête (réseau, DNS éventuel, TCP, TLS et serveur), pas un ping ICMP ou UDP. Les échecs comptabilisés sont des échecs de sondes HTTPS, pas des pertes de paquets du jeu. Les événements de perte rapportés par Android décrivent les événements du réseau par défaut, pas chaque microcoupure d'un flux applicatif. L'application ne lit pas, ne déchiffre pas et ne redirige pas le trafic de Call of Duty Mobile ou d'une autre application.
+Les sondes utilisent HTTPS vers `https://www.google.com/generate_204`. La pause de 1,5 seconde commence après la fin de chaque requête : ce n'est pas un intervalle fixe entre les débuts de sondes. Elles mesurent le temps de réponse complet de la requête (réseau, DNS éventuel, TCP, TLS et serveur), pas un ping ICMP ou UDP. Les échecs comptabilisés sont des échecs de sondes HTTPS, pas des pertes de paquets du jeu. Les événements de perte rapportés par Android décrivent les événements du réseau par défaut, pas chaque microcoupure d'un flux applicatif. L'application ne lit pas, ne déchiffre pas et ne redirige pas le trafic de Call of Duty Mobile ou d'une autre application.
 
 ## Tests et compilation
 
@@ -77,4 +76,4 @@ gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
 
 APK debug : `app/build/outputs/apk/debug/app-debug.apk`.
 
-Les tests unitaires valident la politique de sélection, le classement des points d'accès, la classification de sécurité et les états de résultat du scan. Un test sur téléphone reste nécessaire pour vérifier la visibilité des chemins réseau, la permission de liaison, le maintien de la connexion et la restauration du chemin par défaut.
+Les tests unitaires valident la politique de sélection, le classement des points d'accès, la classification de sécurité, les états de résultat du scan et les calculs de synthèse de l'analyse gaming. Un test sur téléphone reste nécessaire pour vérifier la visibilité des chemins réseau, la permission de liaison, le maintien de la connexion, la restauration du chemin par défaut et le comportement réel d'une session d'analyse.
