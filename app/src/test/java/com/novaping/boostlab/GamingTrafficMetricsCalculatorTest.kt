@@ -86,4 +86,54 @@ class GamingTrafficMetricsCalculatorTest {
         assertEquals(0, result.successRatePercent)
         assertNull(result.medianResponseMs)
     }
+    @Test
+    fun doesNotStopDuringShortNetworkHandover() {
+        assertEquals(
+            false,
+            GamingTrafficSessionPolicy.shouldStopForMissingNetwork(
+                hasValidatedDefaultNetwork = false,
+                unavailableDurationMs = 2_499L
+            )
+        )
+    }
+
+    @Test
+    fun stopsWhenNoValidatedNetworkReturnsAfterGracePeriod() {
+        assertEquals(
+            true,
+            GamingTrafficSessionPolicy.shouldStopForMissingNetwork(
+                hasValidatedDefaultNetwork = false,
+                unavailableDurationMs = GamingTrafficSessionPolicy.NETWORK_RECOVERY_GRACE_MS
+            )
+        )
+    }
+
+    @Test
+    fun neverStopsWhenValidatedDefaultNetworkIsAvailable() {
+        assertEquals(
+            false,
+            GamingTrafficSessionPolicy.shouldStopForMissingNetwork(
+                hasValidatedDefaultNetwork = true,
+                unavailableDurationMs = 30_000L
+            )
+        )
+    }
+
+    @Test
+    fun preservesPartialSummaryWhenSessionStopsForNetworkLoss() {
+        val result = GamingTrafficMetricsCalculator.calculate(
+            samples = listOf(100L, 120L, null),
+            defaultNetworkLossEvents = 1,
+            networkEventMonitoringAvailable = true,
+            durationMs = 4_000L,
+            observedTransports = setOf("Wi-Fi"),
+            interruptedForNoValidatedNetwork = true
+        )
+
+        assertEquals(3, result.totalProbes)
+        assertEquals(2, result.successfulProbes)
+        assertEquals(1, result.failedProbes)
+        assertEquals(true, result.interruptedForNoValidatedNetwork)
+    }
+
 }
