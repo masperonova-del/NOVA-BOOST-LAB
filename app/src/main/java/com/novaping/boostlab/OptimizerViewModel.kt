@@ -411,26 +411,34 @@ internal class OptimizerViewModel(application: Application) : AndroidViewModel(a
                 it.copy(relayCatalogCheckingAll = true, relayCatalogMessage = "Vérification de 0/${targets.size} endpoints…")
             }
             try {
-                targets.forEachIndexed { index, entry ->
-                    val validation = RelayEndpointValidator.validate(entry.name, entry.healthUrl)
+                targets.forEachIndexed { index, target ->
+                    // Re-read before each probe: a relay may have been removed or disabled
+                    // after the batch snapshot was created.
+                    val currentEntry = relayCatalog.getAll().firstOrNull {
+                        it.id == target.id && it.enabled
+                    } ?: return@forEachIndexed
+
+                    val validation = RelayEndpointValidator.validate(currentEntry.name, currentEntry.healthUrl)
                     val result = when (validation) {
                         is RelayValidation.Valid -> relayProbe.check(validation.endpoint)
-                        is RelayValidation.Invalid -> RelayProbeResult(entry.toEndpoint(), false, null, null, validation.reason)
-                    }
-                    relayCatalog.save(
-                        entry.copy(
-                            lastCheckedAtMs = System.currentTimeMillis(),
-                            reachable = result.reachable,
-                            responseMs = result.responseMs,
-                            httpStatus = result.httpStatus
+                        is RelayValidation.Invalid -> RelayProbeResult(
+                            currentEntry.toEndpoint(), false, null, null, validation.reason
                         )
+                    }
+                    // Never upsert a stale batch snapshot: that could resurrect a deleted relay.
+                    relayCatalog.updateProbeResultIfPresent(
+                        id = currentEntry.id,
+                        checkedAtMs = System.currentTimeMillis(),
+                        reachable = result.reachable,
+                        responseMs = result.responseMs,
+                        httpStatus = result.httpStatus
                     )
                     val updated = relayCatalog.getAll()
                     _uiState.update {
                         it.copy(
                             relayEntries = updated,
                             selectedHealthCheckRelayId = RelayCatalogPolicy.selectFastestHealthy(updated)?.id,
-                            relayCatalogMessage = "Contrôle de ${index + 1}/${targets.size} terminé : ${entry.name}."
+                            relayCatalogMessage = "Contrôle de ${index + 1}/${targets.size} terminé : ${currentEntry.name}."
                         )
                     }
                 }
@@ -476,17 +484,29 @@ internal class OptimizerViewModel(application: Application) : AndroidViewModel(a
                         val existing = relayCatalog.getAll().firstOrNull {
                             it.healthUrl.equals(validation.endpoint.healthUrl, ignoreCase = true)
                         }
-                        val saved = RelayEntry(
-                            id = existing?.id ?: UUID.randomUUID().toString(),
-                            name = validation.endpoint.name,
-                            healthUrl = validation.endpoint.healthUrl,
-                            enabled = existing?.enabled ?: true,
-                            lastCheckedAtMs = System.currentTimeMillis(),
-                            reachable = result.reachable,
-                            responseMs = result.responseMs,
-                            httpStatus = result.httpStatus
-                        )
-                        relayCatalog.save(saved)
+                        if (existing == null) {
+                            relayCatalog.save(
+                                RelayEntry(
+                                    id = UUID.randomUUID().toString(),
+                                    name = validation.endpoint.name,
+                                    healthUrl = validation.endpoint.healthUrl,
+                                    lastCheckedAtMs = System.currentTimeMillis(),
+                                    reachable = result.reachable,
+                                    responseMs = result.responseMs,
+                                    httpStatus = result.httpStatus
+                                )
+                            )
+                        } else {
+                            // If the saved relay was removed/disabled while its probe ran,
+                            // do not recreate it or overwrite its current enabled state.
+                            relayCatalog.updateProbeResultIfPresent(
+                                id = existing.id,
+                                checkedAtMs = System.currentTimeMillis(),
+                                reachable = result.reachable,
+                                responseMs = result.responseMs,
+                                httpStatus = result.httpStatus
+                            )
+                        }
                         val best = RelayCatalogPolicy.selectFastestHealthy(relayCatalog.getAll())
                         _uiState.update {
                             it.copy(
