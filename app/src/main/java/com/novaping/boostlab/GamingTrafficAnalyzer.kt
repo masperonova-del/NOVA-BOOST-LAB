@@ -82,6 +82,18 @@ internal object GamingTrafficMetricsCalculator {
     }
 }
 
+internal object GamingTrafficSessionPolicy {
+    const val NETWORK_RECOVERY_GRACE_MS = 2_500L
+
+    fun shouldStopForMissingNetwork(
+        hasValidatedDefaultNetwork: Boolean,
+        unavailableDurationMs: Long
+    ): Boolean {
+        return !hasValidatedDefaultNetwork &&
+            unavailableDurationMs.coerceAtLeast(0L) >= NETWORK_RECOVERY_GRACE_MS
+    }
+}
+
 /**
  * Runs a bounded foreground-only observation session using Android's current default
  * network. Network switches are re-evaluated between probes. It does not inspect or
@@ -209,7 +221,7 @@ internal class GamingTrafficAnalyzer(context: Context) {
             return null
         }
 
-        val deadline = SystemClock.elapsedRealtime() + NETWORK_RECOVERY_GRACE_MS
+        val unavailableStartedAt = SystemClock.elapsedRealtime()
         var waitingMessageSent = false
 
         while (true) {
@@ -222,8 +234,11 @@ internal class GamingTrafficAnalyzer(context: Context) {
                 waitingMessageSent = true
             }
 
-            val remaining = deadline - SystemClock.elapsedRealtime()
-            if (remaining <= 0L) return null
+            val unavailableDurationMs = SystemClock.elapsedRealtime() - unavailableStartedAt
+            if (GamingTrafficSessionPolicy.shouldStopForMissingNetwork(false, unavailableDurationMs)) {
+                return null
+            }
+            val remaining = GamingTrafficSessionPolicy.NETWORK_RECOVERY_GRACE_MS - unavailableDurationMs
 
             // Callback events wake the check immediately. The short timeout also
             // handles devices where callback registration is unavailable.
@@ -276,7 +291,6 @@ internal class GamingTrafficAnalyzer(context: Context) {
         const val PROBE_COUNT = 20
         const val INTERVAL_MS = 1_500L
         const val PROBE_TIMEOUT_MS = 1_800
-        const val NETWORK_RECOVERY_GRACE_MS = 2_500L
         const val NETWORK_RECHECK_INTERVAL_MS = 250L
         const val EXPECTED_STATUS = 204
         const val PROBE_URL = "https://www.google.com/generate_204"
