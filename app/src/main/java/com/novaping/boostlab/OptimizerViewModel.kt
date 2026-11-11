@@ -73,6 +73,7 @@ internal class OptimizerViewModel(application: Application) : AndroidViewModel(a
             profileHistory = historyStore.summary(""),
             archivedRuns = historyStore.legacyArchiveRunCount(),
             relayEntries = relayCatalog.getAll(),
+            selectedHealthCheckRelayId = RelayCatalogPolicy.selectFastestHealthy(relayCatalog.getAll())?.id,
             networkAvailability = optimizer.readNetworkAvailability()
         )
     )
