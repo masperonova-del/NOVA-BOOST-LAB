@@ -189,7 +189,7 @@ internal fun OptimizerScreen(viewModel: OptimizerViewModel) {
                 Text(state.wifiDetectionMessage, color = if (state.detectedWifiSsid != null) Mint else Muted, fontSize = 11.sp, lineHeight = 16.sp)
                 Spacer(Modifier.height(8.dp))
                 if (state.detectedWifiSsid != null) {
-                    Text("Réseau connecté : $state.detectedWifiSsid", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Réseau connecté : ${state.detectedWifiSsid}", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 } else {
                     Text(
                         "Aucun nom de réseau exploitable pour le moment. L’historique restera en attente : aucun profil prédéfini ou nom inventé ne sera utilisé.",
