@@ -53,13 +53,16 @@ Cette évolution est isolée sur une branche expérimentale et ne modifie pas la
 
 ## Fonctionnalités ajoutées en 0.4.0 — Gaming Traffic Analyzer
 
-- Session d'analyse manuelle au premier plan : 20 sondes HTTPS, avec une pause d'environ 1,5 seconde après chaque réponse ; la durée réelle dépend donc du temps de réponse du réseau (environ 30 à 65 secondes dans le pire cas avec les délais configurés).
+- Session d'analyse manuelle au premier plan : jusqu'à 20 sondes HTTPS, avec une pause d'environ 1,5 seconde après chaque réponse ; la durée réelle varie selon les réponses et les changements de réseau.
 - Sondes exécutées sur le réseau Android par défaut, sans changer le routage du processus.
+- Vérification de l'état du réseau par défaut avant chaque sonde et après chaque réponse. Si Android bascule du Wi-Fi aux données mobiles, la prochaine sonde utilise le nouveau chemin ; une réponse obtenue sur l'ancien chemin après le basculement est écartée.
+- En l'absence de réseau Internet validé, attente d'une fenêtre de récupération de 2,5 secondes. Si aucun chemin validé ne revient, la session s'arrête et conserve un rapport partiel au lieu de continuer jusqu'à 20 échecs artificiels.
+- Actualisation en direct de l'état Wi-Fi, cellulaire et Ethernet dans l'écran via `ConnectivityManager.NetworkCallback`.
 - Mesure du temps de réponse HTTPS médian et du taux de réussite des sondes.
 - Variation médiane des temps de réponse entre sondes adjacentes réussies, explicitement présentée comme un indicateur indirect de stabilité et non comme le jitter UDP du jeu.
 - Comptage des événements de perte du réseau par défaut signalés par `ConnectivityManager.NetworkCallback`, lorsque l'enregistrement du callback est autorisé.
-- Résultats sans données inventées : si aucune sonde ne réussit, les latences restent indisponibles.
-- Annulation coroutine respectée, délais réseau bornés et callback toujours désenregistré en fin de session.
+- Résultats sans données inventées : si aucune sonde ne réussit, les latences restent indisponibles ; les sessions interrompues sont explicitement identifiées.
+- Annulation coroutine respectée, délais réseau bornés et callbacks désenregistrés en fin de session et à la fermeture de l'écran.
 - Aucun service en arrière-plan, aucune collecte distante, aucun serveur payant et aucune permission Android supplémentaire.
 
 ### Limites de mesure en 0.4.0
