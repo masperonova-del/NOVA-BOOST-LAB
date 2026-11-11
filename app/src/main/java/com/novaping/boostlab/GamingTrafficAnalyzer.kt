@@ -47,7 +47,7 @@ internal object GamingTrafficMetricsCalculator {
         val successful = valid.count { it != null }
         val failed = valid.size - successful
         val adjacentVariations = valid.zipWithNext().mapNotNull { (left, right) ->
-            if (left != null && right != null) abs(right - left) else null
+            if (left != null && right != null) absoluteDifference(right, left) else null
         }
         return GamingTrafficSummary(
             totalProbes = valid.size,
@@ -62,6 +62,8 @@ internal object GamingTrafficMetricsCalculator {
         )
     }
 
+    private fun absoluteDifference(left: Long, right: Long): Long = if (left >= right) left - right else right - left
+
     private fun median(values: List<Long>): Long? {
         if (values.isEmpty()) return null
         val sorted = values.sorted()
@@ -69,7 +71,7 @@ internal object GamingTrafficMetricsCalculator {
         return if (sorted.size % 2 == 1) {
             sorted[middle]
         } else {
-            (sorted[middle - 1] + sorted[middle]) / 2L
+            sorted[middle - 1] + (sorted[middle] - sorted[middle - 1]) / 2L
         }
     }
 }
@@ -122,12 +124,14 @@ internal class GamingTrafficAnalyzer(context: Context) {
             repeat(PROBE_COUNT) { index ->
                 currentCoroutineContext().ensureActive()
                 val network = manager?.activeNetwork
-                val capabilities = network?.let { manager.getNetworkCapabilities(it) }
-                val validated = capabilities?.hasCapability(
-                    NetworkCapabilities.NET_CAPABILITY_INTERNET
-                ) == true && capabilities.hasCapability(
-                    NetworkCapabilities.NET_CAPABILITY_VALIDATED
-                )
+                val capabilities = if (manager != null && network != null) {
+                    manager.getNetworkCapabilities(network)
+                } else {
+                    null
+                }
+                val validated = capabilities != null &&
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
 
                 if (network != null && capabilities != null) {
                     transportLabel(capabilities)?.let(observedTransports::add)
