@@ -3,8 +3,14 @@ package com.novaping.boostlab
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -21,6 +27,7 @@ import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -145,6 +152,53 @@ private fun OptimizerScreen() {
         }
     }
 
+    val networkManager = remember(context) {
+        context.applicationContext.getSystemService(ConnectivityManager::class.java)
+    }
+    DisposableEffect(networkManager) {
+        var callbackRegistered = false
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                networkAvailability = optimizer.readNetworkAvailability()
+            }
+
+            override fun onLost(network: Network) {
+                networkAvailability = optimizer.readNetworkAvailability()
+            }
+
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                networkAvailability = optimizer.readNetworkAvailability()
+            }
+        }
+
+        if (networkManager != null) {
+            try {
+                val request = NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .build()
+                networkManager.registerNetworkCallback(
+                    request,
+                    callback,
+                    Handler(Looper.getMainLooper())
+                )
+                callbackRegistered = true
+            } catch (_: Exception) {
+                // The initial snapshot remains available if live monitoring is restricted.
+            }
+        }
+        networkAvailability = optimizer.readNetworkAvailability()
+
+        onDispose {
+            if (callbackRegistered && networkManager != null) {
+                try {
+                    networkManager.unregisterNetworkCallback(callback)
+                } catch (_: Exception) {
+                    // Activity disposal must not fail because callback cleanup failed.
+                }
+            }
+        }
+    }
+
     Surface(modifier = Modifier.fillMaxSize(), color = Navy) {
         Column(
             modifier = Modifier
@@ -208,7 +262,7 @@ private fun OptimizerScreen() {
                 }
                 Spacer(Modifier.height(7.dp))
                 Text(
-                    "Lance 20 sondes HTTPS sur le réseau Android par défaut. Une pause d'environ 1,5 seconde est ajoutée après chaque réponse ; la durée totale varie selon la connexion (environ 30 à 65 secondes au maximum configuré). Les résultats décrivent la connexion de NOVA BOOST LAB, pas le ping ni les paquets de CODM.",
+                    "Lance jusqu'à 20 sondes HTTPS sur le réseau Android par défaut. Le moteur suit les changements de réseau : il reprend sur le nouveau chemin disponible et s'arrête si aucun réseau Internet validé ne revient après 2,5 secondes. Les résultats décrivent la connexion de NOVA BOOST LAB, pas le ping ni les paquets de CODM.",
                     color = Muted, fontSize = 11.sp, lineHeight = 16.sp
                 )
                 Spacer(Modifier.height(10.dp))
@@ -223,12 +277,20 @@ private fun OptimizerScreen() {
                                 trafficSummary = null
                                 trafficMessage = "Préparation de la session…"
                                 try {
-                                    val result = trafficAnalyzer.runSession { completed, total ->
-                                        trafficProgress = completed
-                                        trafficMessage = "Sonde $completed/$total"
-                                    }
+                                    val result = trafficAnalyzer.runSession(
+                                        onProgress = { completed, total ->
+                                            trafficProgress = completed
+                                        },
+                                        onNetworkState = { status ->
+                                            trafficMessage = status
+                                        }
+                                    )
                                     trafficSummary = result
-                                    trafficMessage = "Session terminée en ${result.durationMs / 1000L} s."
+                                    trafficMessage = if (result.interruptedForNoValidatedNetwork) {
+                                        "Analyse arrêtée : aucun réseau validé. ${result.totalProbes}/20 sondes effectuées en ${result.durationMs / 1000L} s."
+                                    } else {
+                                        "Session terminée : ${result.totalProbes}/20 sondes en ${result.durationMs / 1000L} s."
+                                    }
                                 } catch (cancelled: CancellationException) {
                                     trafficMessage = "Analyse annulée."
                                     throw cancelled
