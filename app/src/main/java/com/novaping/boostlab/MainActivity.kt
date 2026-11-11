@@ -168,11 +168,13 @@ private fun OptimizerScreen() {
     }
     val defaultNetwork = networkManager?.activeNetwork
     val defaultCapabilities = defaultNetwork?.let { networkManager?.getNetworkCapabilities(it) }
+    val hasValidatedDefaultNetwork = defaultCapabilities?.let {
+        it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    } == true
     val tunnelReadiness = TunnelReadinessEvaluator.evaluate(
         TunnelPrerequisites(
-            validatedNetworkAvailable =
-                defaultCapabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
-                    defaultCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+            validatedNetworkAvailable = hasValidatedDefaultNetwork,
             relayHealthVerified = relayProbeResult?.reachable == true,
             relayProtocolCompatible = false,
             vpnConsentGranted = false,
@@ -684,7 +686,7 @@ private fun OptimizerScreen() {
                 }
                 Text(readinessMessage, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
                 Spacer(Modifier.height(8.dp))
-                MetricLine("Réseau par défaut", if (tunnelReadiness == TunnelReadiness.WAITING_FOR_VALIDATED_NETWORK) "Non validé" else "Vérifié / à confirmer")
+                MetricLine("Réseau par défaut", if (hasValidatedDefaultNetwork) "Validé" else "Non validé")
                 MetricLine("Point de contrôle", if (relayProbeResult?.reachable == true) "HTTPS joignable" else "Non vérifié")
                 MetricLine("Transport relais", "Non implémenté")
                 MetricLine("Tunnel VPN", "Inactif")
