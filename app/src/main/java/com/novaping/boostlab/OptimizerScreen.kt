@@ -401,6 +401,15 @@ internal fun OptimizerScreen(viewModel: OptimizerViewModel) {
                 }
                 Spacer(Modifier.height(12.dp))
                 Text("RELAIS ENREGISTRÉS (${state.relayEntries.size})", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                OutlinedButton(
+                    onClick = { viewModel.checkAllRelayEndpoints() },
+                    enabled = !state.relayCatalogCheckingAll && !state.relayProbeRunning && state.relayEntries.any { it.enabled },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(11.dp)
+                ) {
+                    Text(if (state.relayCatalogCheckingAll) "CONTRÔLE EN COURS…" else "VÉRIFIER TOUS LES RELAIS ACTIVÉS")
+                }
+                Text(state.relayCatalogMessage, color = Muted, fontSize = 10.sp)
                 if (state.relayEntries.isEmpty()) {
                     Text("Aucun endpoint enregistré. Lance une vérification pour l'ajouter automatiquement.", color = Muted, fontSize = 10.sp)
                 } else {
