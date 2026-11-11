@@ -43,6 +43,8 @@ internal data class OptimizerUiState(
     val hasValidatedDefaultNetwork: Boolean = false,
     val relayEntries: List<RelayEntry> = emptyList(),
     val selectedHealthCheckRelayId: String? = null,
+    val relayCatalogCheckingAll: Boolean = false,
+    val relayCatalogMessage: String = "Contrôle manuel des endpoints enregistrés.",
     val relayName: String = "Mon relais",
     val relayHealthUrl: String = "",
     val relayProbeRunning: Boolean = false,
@@ -376,13 +378,72 @@ internal class OptimizerViewModel(application: Application) : AndroidViewModel(a
 
     fun removeRelay(id: String) {
         relayCatalog.remove(id)
-        _uiState.update { it.copy(relayEntries = relayCatalog.getAll()) }
+        val entries = relayCatalog.getAll()
+        _uiState.update {
+            it.copy(
+                relayEntries = entries,
+                selectedHealthCheckRelayId = RelayCatalogPolicy.selectFastestHealthy(entries)?.id
+            )
+        }
     }
 
     fun setRelayEnabled(id: String, enabled: Boolean) {
         relayCatalog.setEnabled(id, enabled)
-        _uiState.update { it.copy(relayEntries = relayCatalog.getAll()) }
+        val entries = relayCatalog.getAll()
+        _uiState.update {
+            it.copy(
+                relayEntries = entries,
+                selectedHealthCheckRelayId = RelayCatalogPolicy.selectFastestHealthy(entries)?.id
+            )
+        }
     }
+
+    fun checkAllRelayEndpoints() {
+        if (relayJob?.isActive == true) return
+        val targets = relayCatalog.getAll().filter { it.enabled }
+        if (targets.isEmpty()) {
+            _uiState.update { it.copy(relayCatalogMessage = "Aucun endpoint activé à vérifier.") }
+            return
+        }
+        relayJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(relayCatalogCheckingAll = true, relayCatalogMessage = "Vérification de 0/${targets.size} endpoints…")
+            }
+            try {
+                targets.forEachIndexed { index, entry ->
+                    val validation = RelayEndpointValidator.validate(entry.name, entry.healthUrl)
+                    val result = when (validation) {
+                        is RelayValidation.Valid -> relayProbe.check(validation.endpoint)
+                        is RelayValidation.Invalid -> RelayProbeResult(entry.toEndpoint(), false, null, null, validation.reason)
+                    }
+                    relayCatalog.save(
+                        entry.copy(
+                            lastCheckedAtMs = System.currentTimeMillis(),
+                            reachable = result.reachable,
+                            responseMs = result.responseMs,
+                            httpStatus = result.httpStatus
+                        )
+                    )
+                    val updated = relayCatalog.getAll()
+                    _uiState.update {
+                        it.copy(
+                            relayEntries = updated,
+                            selectedHealthCheckRelayId = RelayCatalogPolicy.selectFastestHealthy(updated)?.id,
+                            relayCatalogMessage = "Contrôle de ${index + 1}/${targets.size} terminé : ${entry.name}."
+                        )
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                _uiState.update { it.copy(relayCatalogMessage = "Contrôle global annulé. Les résultats partiels sont conservés.") }
+                throw cancelled
+            } finally {
+                _uiState.update { it.copy(relayCatalogCheckingAll = false) }
+                relayJob = null
+            }
+        }
+    }
+
+    private fun RelayEntry.toEndpoint() = RelayEndpoint(name, healthUrl)
 
     fun checkSavedRelay(entry: RelayEntry) {
         _uiState.update { it.copy(relayName = entry.name, relayHealthUrl = entry.healthUrl) }
