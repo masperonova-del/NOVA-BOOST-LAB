@@ -15,7 +15,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.abs
 
 /**
  * Summary of app-owned HTTPS probes. These values are not game-packet telemetry.
