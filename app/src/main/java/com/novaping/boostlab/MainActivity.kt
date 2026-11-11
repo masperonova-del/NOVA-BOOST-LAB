@@ -208,7 +208,7 @@ private fun OptimizerScreen() {
                 }
                 Spacer(Modifier.height(7.dp))
                 Text(
-                    "Lance une session de 20 sondes HTTPS espacées d'environ 1,5 seconde sur le réseau Android par défaut. L'analyse observe les temps de réponse, leur variation et les événements de perte du réseau signalés par Android.",
+                    "Lance 20 sondes HTTPS sur le réseau Android par défaut. Une pause d'environ 1,5 seconde est ajoutée après chaque réponse ; la durée totale varie selon la connexion (environ 30 à 65 secondes au maximum configuré). Les résultats décrivent la connexion de NOVA BOOST LAB, pas le ping ni les paquets de CODM.",
                     color = Muted, fontSize = 11.sp, lineHeight = 16.sp
                 )
                 Spacer(Modifier.height(10.dp))
@@ -263,7 +263,7 @@ private fun OptimizerScreen() {
                     MetricLine("Temps de réponse médian", summary.medianResponseMs?.let { "$it ms" } ?: "Indisponible")
                     MetricLine("Variation médiane des réponses", summary.medianResponseVariationMs?.let { "$it ms" } ?: "Données insuffisantes")
                     MetricLine(
-                        "Événements onLost réseau par défaut",
+                        "Événements onLost du réseau par défaut",
                         if (summary.networkEventMonitoringAvailable) summary.defaultNetworkLossEvents.toString() else "Surveillance indisponible"
                     )
                     MetricLine("Réseaux observés", summary.observedTransports.joinToString().ifBlank { "Aucun" })
