@@ -10,6 +10,7 @@ on:
       - feature/0.4.0-gaming-traffic-analyzer
       - feature/0.5.0-infrastructure-relay
       - feature/0.6.0-tunnel-routing
+      - refactor/architecture-lot-a
   workflow_dispatch:
 
 jobs:
