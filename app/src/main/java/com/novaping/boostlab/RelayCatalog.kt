@@ -33,6 +33,26 @@ internal object RelayCatalogPolicy {
         return (retained + entry).sortedBy { it.name.lowercase() }
     }
 
+    fun updateProbeResultIfPresent(
+        entries: List<RelayEntry>,
+        id: String,
+        checkedAtMs: Long,
+        reachable: Boolean,
+        responseMs: Long?,
+        httpStatus: Int?
+    ): List<RelayEntry> = entries.map { entry ->
+        if (entry.id == id && entry.enabled) {
+            entry.copy(
+                lastCheckedAtMs = checkedAtMs,
+                reachable = reachable,
+                responseMs = responseMs,
+                httpStatus = httpStatus
+            )
+        } else {
+            entry
+        }
+    }
+
     const val MAX_ENTRIES = 20
 }
 
@@ -44,6 +64,22 @@ internal class RelayCatalogRepository(context: Context) {
     fun save(entry: RelayEntry) {
         val updated = RelayCatalogPolicy.upsert(getAll(), entry)
         preferences.edit().putString(KEY_ENTRIES, encode(updated)).apply()
+    }
+
+    fun updateProbeResultIfPresent(
+        id: String,
+        checkedAtMs: Long,
+        reachable: Boolean,
+        responseMs: Long?,
+        httpStatus: Int?
+    ): RelayEntry? {
+        val current = getAll()
+        val existing = current.firstOrNull { it.id == id && it.enabled } ?: return null
+        val updated = RelayCatalogPolicy.updateProbeResultIfPresent(
+            current, id, checkedAtMs, reachable, responseMs, httpStatus
+        )
+        preferences.edit().putString(KEY_ENTRIES, encode(updated)).apply()
+        return updated.firstOrNull { it.id == id } ?: existing
     }
 
     fun remove(id: String) {
