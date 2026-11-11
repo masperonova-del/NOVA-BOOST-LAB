@@ -45,6 +45,25 @@ class RelayCatalogPolicyTest {
         assertEquals(1, result.count { it.id == added.id })
     }
 
+    @Test
+    fun probeResultDoesNotResurrectDeletedEntry() {
+        val current = listOf(entry("remaining", 100L))
+        val result = RelayCatalogPolicy.updateProbeResultIfPresent(
+            current, "deleted", 1_000L, true, 20L, 204
+        )
+        assertEquals(current, result)
+    }
+
+    @Test
+    fun probeResultDoesNotReenableOrUpdateDisabledEntry() {
+        val disabled = entry("disabled", 100L, enabled = false)
+        val result = RelayCatalogPolicy.updateProbeResultIfPresent(
+            listOf(disabled), "disabled", 1_000L, true, 20L, 204
+        )
+        assertEquals(disabled, result.single())
+        assertEquals(false, result.single().enabled)
+    }
+
     private fun entry(
         id: String,
         latency: Long?,
