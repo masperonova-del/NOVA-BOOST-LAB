@@ -139,7 +139,7 @@ internal fun OptimizerScreen(viewModel: OptimizerViewModel) {
                 }
                 if (state.analyzingTraffic) {
                     LinearProgressIndicator(
-                        state.progress = state.trafficProgress / 20f,
+                        progress = state.trafficProgress / 20f,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -442,9 +442,6 @@ internal fun OptimizerScreen(viewModel: OptimizerViewModel) {
             )
         }
     }
-}
-
-
 }
 
 @Composable
