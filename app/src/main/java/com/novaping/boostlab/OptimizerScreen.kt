@@ -422,6 +422,7 @@ internal fun OptimizerScreen(viewModel: OptimizerViewModel) {
                         ) {
                             Text(entry.name, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             Text(entry.healthUrl, color = Muted, fontSize = 10.sp, maxLines = 2)
+                            Text("Protocole : contrôle HTTPS uniquement", color = Muted, fontSize = 9.sp)
                             Text(
                                 when {
                                     !entry.enabled -> "Désactivé"
