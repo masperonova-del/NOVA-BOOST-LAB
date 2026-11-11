@@ -80,6 +80,17 @@ Les sondes utilisent HTTPS vers `https://www.google.com/generate_204`. La pause 
 
 **Limite fonctionnelle :** 0.5.0 vérifie la disponibilité d'un endpoint de santé. Cela ne prouve pas qu'un serveur relaie des paquets et ne crée pas de tunnel. Aucun serveur relais n'est fourni dans le dépôt ; aucun trafic CODM ou d'une autre application n'est redirigé.
 
+## Lot B — Gestionnaire multi-endpoints Relay (branche de travail)
+
+- Catalogue local persistant des endpoints de santé HTTPS : nom, URL, activation, date du dernier contrôle, résultat, code HTTP et temps de réponse.
+- Ajout automatique au catalogue après un contrôle individuel valide ; une URL déjà enregistrée est mise à jour au lieu d'être dupliquée.
+- Actions dans l'interface : tester un endpoint, activer/désactiver, supprimer et vérifier séquentiellement tous les endpoints activés.
+- Sélection déterministe du meilleur temps parmi les endpoints activés dont le dernier contrôle a réussi ; le résultat est présenté uniquement comme classement de disponibilité HTTPS.
+- Les résultats partiels sont conservés si le contrôle global est annulé.
+- Tests unitaires de sélection, de filtrage des endpoints désactivés/non vérifiés et de remplacement d'une URL existante.
+
+**Limites du Lot B :** la surveillance est déclenchée manuellement par l'utilisateur ; aucun service périodique ou arrière-plan n'est ajouté. Le classement ne sélectionne pas un relais de transport et n'autorise aucun tunnel. Un endpoint de santé HTTPS reste distinct d'un serveur capable de transférer des paquets. Aucun trafic d'une autre application n'est redirigé.
+
 ## Fonctionnalités ajoutées en 0.6.0 — Tunnel et routage alternatif
 
 - Évaluation explicite des prérequis avant tout futur démarrage VPN : réseau par défaut validé, contrôle de santé du relais, compatibilité du protocole, consentement Android et absence d'un autre VPN actif.
