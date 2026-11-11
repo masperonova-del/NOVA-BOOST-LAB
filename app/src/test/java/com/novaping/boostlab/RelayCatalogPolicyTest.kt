@@ -36,6 +36,15 @@ class RelayCatalogPolicyTest {
         assertEquals("new", result.single().id)
     }
 
+    @Test
+    fun catalogNeverExceedsLimitAndKeepsNewEntry() {
+        val existing = (1..RelayCatalogPolicy.MAX_ENTRIES).map { entry("relay-${it.toString().padStart(2, '0')}", 100L) }
+        val added = entry("zz-new", 50L)
+        val result = RelayCatalogPolicy.upsert(existing, added)
+        assertEquals(RelayCatalogPolicy.MAX_ENTRIES, result.size)
+        assertEquals(1, result.count { it.id == added.id })
+    }
+
     private fun entry(
         id: String,
         latency: Long?,
