@@ -23,6 +23,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+private val Navy = Color(0xFF07111F)
+private val Panel = Color(0xFF101F32)
+private val PanelRaised = Color(0xFF172A42)
+private val Blue = Color(0xFF63B3FF)
+private val Mint = Color(0xFF55E0B5)
+private val Muted = Color(0xFF9CAFC5)
+private val Border = Color(0xFF263B55)
+private val Danger = Color(0xFFFF8C8C)
+
 @Composable
 internal fun OptimizerScreen(viewModel: OptimizerViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -119,10 +128,10 @@ internal fun OptimizerScreen(viewModel: OptimizerViewModel) {
                 Spacer(Modifier.height(10.dp))
                 Button(
                     onClick = {
-                        if (state.state.analyzingTraffic) viewModel.cancelTrafficAnalysis()
+                        if (state.analyzingTraffic) viewModel.cancelTrafficAnalysis()
                         else viewModel.runTrafficAnalysis()
                     },
-                    enabled = !state.state.running && !state.state.scanningNearbyWifi,
+                    enabled = !state.running && !state.scanningNearbyWifi,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -171,7 +180,7 @@ internal fun OptimizerScreen(viewModel: OptimizerViewModel) {
                             wifiPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                         }
                     },
-                    enabled = !state.state.running && !state.state.analyzingTraffic,
+                    enabled = !state.running && !state.analyzingTraffic,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -240,7 +249,7 @@ internal fun OptimizerScreen(viewModel: OptimizerViewModel) {
                             nearbyWifiPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                         }
                     },
-                    enabled = !state.state.scanningNearbyWifi && !state.state.running && !state.state.analyzingTraffic,
+                    enabled = !state.scanningNearbyWifi && !state.running && !state.analyzingTraffic,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -280,7 +289,7 @@ internal fun OptimizerScreen(viewModel: OptimizerViewModel) {
                 Spacer(Modifier.height(14.dp))
                 Button(
                     onClick = { viewModel.optimizeProcessPath() },
-                    enabled = !state.state.running && !state.state.restoring && !state.state.analyzingTraffic,
+                    enabled = !state.running && !state.restoring && !state.analyzingTraffic,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(13.dp)
                 ) {
@@ -340,7 +349,7 @@ internal fun OptimizerScreen(viewModel: OptimizerViewModel) {
 
             OutlinedButton(
                 onClick = { viewModel.restoreDefaultPath() },
-                enabled = !state.state.running && !state.state.restoring,
+                enabled = !state.running && !state.restoring,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(13.dp)
             ) {
@@ -358,7 +367,7 @@ internal fun OptimizerScreen(viewModel: OptimizerViewModel) {
                 )
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
-                    value = state.state.relayName,
+                    value = state.relayName,
                     onValueChange = viewModel::updateRelayName,
                     label = { Text("Nom du relais") },
                     singleLine = true,
@@ -366,7 +375,7 @@ internal fun OptimizerScreen(viewModel: OptimizerViewModel) {
                 )
                 Spacer(Modifier.height(7.dp))
                 OutlinedTextField(
-                    value = state.state.relayHealthUrl,
+                    value = state.relayHealthUrl,
                     onValueChange = viewModel::updateRelayHealthUrl,
                     label = { Text("Adresse HTTPS /health") },
                     placeholder = { Text("https://relay.example.com/health") },
@@ -376,7 +385,7 @@ internal fun OptimizerScreen(viewModel: OptimizerViewModel) {
                 Spacer(Modifier.height(9.dp))
                 OutlinedButton(
                     onClick = { viewModel.checkRelayEndpoint() },
-                    enabled = !state.state.relayProbeRunning,
+                    enabled = !state.relayProbeRunning,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
