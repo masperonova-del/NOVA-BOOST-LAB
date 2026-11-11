@@ -1,4 +1,4 @@
-# NOVA BOOST LAB 0.4.0 — Gaming Traffic Analyzer + Active Network Path Optimizer
+# NOVA BOOST LAB 0.5.0 — Infrastructure Relay
 
 Application Android indépendante qui compare les chemins réseau déjà disponibles et peut lier le processus NOVA BOOST LAB au chemin mesuré comme le plus intéressant.
 
@@ -68,6 +68,17 @@ Cette évolution est isolée sur une branche expérimentale et ne modifie pas la
 ### Limites de mesure en 0.4.0
 
 Les sondes utilisent HTTPS vers `https://www.google.com/generate_204`. La pause de 1,5 seconde commence après la fin de chaque requête : ce n'est pas un intervalle fixe entre les débuts de sondes. Elles mesurent le temps de réponse complet de la requête (réseau, DNS éventuel, TCP, TLS et serveur), pas un ping ICMP ou UDP. Les échecs comptabilisés sont des échecs de sondes HTTPS, pas des pertes de paquets du jeu. Les événements de perte rapportés par Android décrivent les événements du réseau par défaut, pas chaque microcoupure d'un flux applicatif. L'application ne lit pas, ne déchiffre pas et ne redirige pas le trafic de Call of Duty Mobile ou d'une autre application.
+
+## Fonctionnalités ajoutées en 0.5.0 — Infrastructure Relay
+
+- Validation stricte des points de contrôle HTTPS fournis par l'opérateur : nom borné, hôte obligatoire, HTTPS obligatoire, absence d'identifiants intégrés, de paramètres et de fragments.
+- Sondes HTTPS bornées à 3 secondes de connexion et de lecture, sans redirection automatique.
+- Affichage du code HTTP, de l'accessibilité et du temps de réponse mesuré.
+- Sélection déterministe du point de contrôle joignable le plus rapide parmi les résultats mesurés.
+- Tests unitaires de validation des URL et de sélection.
+- Aucun secret ni jeton n'est demandé ou conservé.
+
+**Limite fonctionnelle :** 0.5.0 vérifie la disponibilité d'un endpoint de santé. Cela ne prouve pas qu'un serveur relaie des paquets et ne crée pas de tunnel. Aucun serveur relais n'est fourni dans le dépôt ; aucun trafic CODM ou d'une autre application n'est redirigé.
 
 ## Tests et compilation
 
