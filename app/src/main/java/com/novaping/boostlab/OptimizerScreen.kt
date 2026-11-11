@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -407,7 +408,7 @@ internal fun OptimizerScreen(viewModel: OptimizerViewModel) {
                         Spacer(Modifier.height(7.dp))
                         Column(
                             modifier = Modifier.fillMaxWidth()
-                                .background(PanelInset, RoundedCornerShape(10.dp))
+                                .background(PanelRaised, RoundedCornerShape(10.dp))
                                 .padding(10.dp)
                         ) {
                             Text(entry.name, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
