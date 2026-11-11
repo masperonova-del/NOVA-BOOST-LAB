@@ -272,13 +272,18 @@ internal class OptimizerViewModel(application: Application) : AndroidViewModel(a
 
     fun optimizeProcessPath() {
         if (optimizationJob?.isActive == true) return
-        if (hasFineLocationPermission()) refreshConnectedWifi() else onWifiPermissionDenied()
+        if (hasFineLocationPermission()) {
+            refreshConnectedWifi()
+        } else {
+            // Keep optimization available without location permission; only history attribution is disabled.
+            activeWifiProfileId = null
+        }
+        val profileIdForThisRun = activeWifiProfileId
         optimizationJob = viewModelScope.launch {
             _uiState.update {
                 it.copy(running = true, report = null, progress = "Recherche des chemins disponibles…")
             }
             try {
-                val profileIdForThisRun = activeWifiProfileId
                 val result = optimizer.optimizeProcessPath { status ->
                     _uiState.update { it.copy(progress = status) }
                 }
