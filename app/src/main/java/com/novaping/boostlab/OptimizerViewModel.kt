@@ -20,6 +20,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import java.util.UUID
 
 internal data class OptimizerUiState(
     val nearbyWifiNetworks: List<NearbyWifiNetwork> = emptyList(),
@@ -40,6 +41,8 @@ internal data class OptimizerUiState(
         TransportAvailability(false, false)
     ),
     val hasValidatedDefaultNetwork: Boolean = false,
+    val relayEntries: List<RelayEntry> = emptyList(),
+    val selectedHealthCheckRelayId: String? = null,
     val relayName: String = "Mon relais",
     val relayHealthUrl: String = "",
     val relayProbeRunning: Boolean = false,
@@ -59,6 +62,7 @@ internal class OptimizerViewModel(application: Application) : AndroidViewModel(a
     private val nearbyWifiScanner = NearbyWifiScanner(appContext)
     private val trafficAnalyzer = GamingTrafficAnalyzer(appContext)
     private val relayProbe = RelayEndpointProbe()
+    private val relayCatalog = RelayCatalogRepository(appContext)
     private val connectivityManager = appContext.getSystemService(ConnectivityManager::class.java)
     private val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
 
@@ -66,6 +70,7 @@ internal class OptimizerViewModel(application: Application) : AndroidViewModel(a
         OptimizerUiState(
             profileHistory = historyStore.summary(""),
             archivedRuns = historyStore.legacyArchiveRunCount(),
+            relayEntries = relayCatalog.getAll(),
             networkAvailability = optimizer.readNetworkAvailability()
         )
     )
@@ -369,6 +374,21 @@ internal class OptimizerViewModel(application: Application) : AndroidViewModel(a
         refreshTunnelReadiness()
     }
 
+    fun removeRelay(id: String) {
+        relayCatalog.remove(id)
+        _uiState.update { it.copy(relayEntries = relayCatalog.getAll()) }
+    }
+
+    fun setRelayEnabled(id: String, enabled: Boolean) {
+        relayCatalog.setEnabled(id, enabled)
+        _uiState.update { it.copy(relayEntries = relayCatalog.getAll()) }
+    }
+
+    fun checkSavedRelay(entry: RelayEntry) {
+        _uiState.update { it.copy(relayName = entry.name, relayHealthUrl = entry.healthUrl) }
+        checkRelayEndpoint()
+    }
+
     fun checkRelayEndpoint() {
         if (relayJob?.isActive == true) return
         val current = _uiState.value
@@ -391,7 +411,29 @@ internal class OptimizerViewModel(application: Application) : AndroidViewModel(a
                     refreshTunnelReadiness()
                     try {
                         val result = relayProbe.check(validation.endpoint)
-                        _uiState.update { it.copy(relayProbeResult = result, relayProbeMessage = result.message) }
+                        val existing = relayCatalog.getAll().firstOrNull {
+                            it.healthUrl.equals(validation.endpoint.healthUrl, ignoreCase = true)
+                        }
+                        val saved = RelayEntry(
+                            id = existing?.id ?: UUID.randomUUID().toString(),
+                            name = validation.endpoint.name,
+                            healthUrl = validation.endpoint.healthUrl,
+                            enabled = existing?.enabled ?: true,
+                            lastCheckedAtMs = System.currentTimeMillis(),
+                            reachable = result.reachable,
+                            responseMs = result.responseMs,
+                            httpStatus = result.httpStatus
+                        )
+                        relayCatalog.save(saved)
+                        val best = RelayCatalogPolicy.selectFastestHealthy(relayCatalog.getAll())
+                        _uiState.update {
+                            it.copy(
+                                relayEntries = relayCatalog.getAll(),
+                                selectedHealthCheckRelayId = best?.id,
+                                relayProbeResult = result,
+                                relayProbeMessage = result.message
+                            )
+                        }
                         refreshTunnelReadiness()
                     } catch (cancelled: CancellationException) {
                         throw cancelled
