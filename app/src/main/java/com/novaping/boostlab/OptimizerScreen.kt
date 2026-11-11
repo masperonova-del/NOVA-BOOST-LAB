@@ -398,6 +398,47 @@ internal fun OptimizerScreen(viewModel: OptimizerViewModel) {
                     MetricLine("Code HTTP", result.httpStatus?.toString() ?: "Aucune réponse")
                     MetricLine("Temps de réponse", result.responseMs?.let { "$it ms" } ?: "Indisponible")
                 }
+                Spacer(Modifier.height(12.dp))
+                Text("RELAIS ENREGISTRÉS (${state.relayEntries.size})", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                if (state.relayEntries.isEmpty()) {
+                    Text("Aucun endpoint enregistré. Lance une vérification pour l'ajouter automatiquement.", color = Muted, fontSize = 10.sp)
+                } else {
+                    state.relayEntries.forEach { entry ->
+                        Spacer(Modifier.height(7.dp))
+                        Column(
+                            modifier = Modifier.fillMaxWidth()
+                                .background(PanelInset, RoundedCornerShape(10.dp))
+                                .padding(10.dp)
+                        ) {
+                            Text(entry.name, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text(entry.healthUrl, color = Muted, fontSize = 10.sp, maxLines = 2)
+                            Text(
+                                when {
+                                    !entry.enabled -> "Désactivé"
+                                    entry.reachable == true -> "HTTPS accessible · ${entry.responseMs ?: "—"} ms"
+                                    entry.reachable == false -> "Dernier contrôle : inaccessible"
+                                    else -> "Jamais vérifié"
+                                },
+                                color = if (entry.reachable == true && entry.enabled) Mint else Muted,
+                                fontSize = 10.sp
+                            )
+                            if (entry.id == state.selectedHealthCheckRelayId) {
+                                Text("Meilleur temps parmi les endpoints de santé activés", color = Mint, fontSize = 10.sp)
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                TextButton(onClick = { viewModel.checkSavedRelay(entry) }, enabled = !state.relayProbeRunning) {
+                                    Text("Tester")
+                                }
+                                TextButton(onClick = { viewModel.setRelayEnabled(entry.id, !entry.enabled) }) {
+                                    Text(if (entry.enabled) "Désactiver" else "Activer")
+                                }
+                                TextButton(onClick = { viewModel.removeRelay(entry.id) }) {
+                                    Text("Supprimer", color = Color(0xFFFF8A80))
+                                }
+                            }
+                        }
+                    }
+                }
                 Text(
                     "Sécurité : HTTPS uniquement, sans identifiants intégrés à l'URL. Aucun mot de passe ni jeton n'est demandé.",
                     color = Muted, fontSize = 10.sp, lineHeight = 15.sp
