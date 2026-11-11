@@ -162,7 +162,7 @@ internal class GamingTrafficAnalyzer(context: Context) {
                     interruptedForNoValidatedNetwork = true
                     onNetworkState(
                         "Analyse arrêtée : aucun réseau Internet validé n'est revenu après " +
-                            NETWORK_RECOVERY_GRACE_MS + " ms."
+                            GamingTrafficSessionPolicy.NETWORK_RECOVERY_GRACE_MS + " ms."
                     )
                     break
                 }
