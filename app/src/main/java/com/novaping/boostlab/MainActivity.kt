@@ -138,6 +138,12 @@ private fun OptimizerScreen() {
     }
     var report by remember { mutableStateOf<OptimizationReport?>(null) }
     var networkAvailability by remember { mutableStateOf(optimizer.readNetworkAvailability()) }
+    val relayProbe = remember { RelayEndpointProbe() }
+    var relayName by remember { mutableStateOf("Mon relais") }
+    var relayHealthUrl by remember { mutableStateOf("") }
+    var relayProbeRunning by remember { mutableStateOf(false) }
+    var relayProbeResult by remember { mutableStateOf<RelayProbeResult?>(null) }
+    var relayProbeMessage by remember { mutableStateOf("Ajoute l'adresse HTTPS du point de contrôle de ton relais.") }
     val trafficAnalyzer = remember(context) { GamingTrafficAnalyzer(context.applicationContext) }
     var analyzingTraffic by remember { mutableStateOf(false) }
     var trafficJob by remember { mutableStateOf<Job?>(null) }
@@ -230,7 +236,7 @@ private fun OptimizerScreen() {
                 }
                 Surface(color = Color(0xFF173B36), shape = CircleShape) {
                     Text(
-                        "0.4.0",
+                        "0.5.0",
                         color = Mint,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -580,6 +586,75 @@ private fun OptimizerScreen() {
                 Icon(Icons.Default.Restore, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("RESTAURER LE CHEMIN PAR DÉFAUT")
+            }
+
+            PanelCard {
+                Text("INFRASTRUCTURE RELAY", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    "Ajoute l'adresse HTTPS du point de contrôle fourni par l'opérateur du relais. Le test vérifie uniquement sa disponibilité et son temps de réponse ; il ne transporte pas le trafic des autres applications.",
+                    color = Muted, fontSize = 11.sp, lineHeight = 16.sp
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = relayName,
+                    onValueChange = { relayName = it },
+                    label = { Text("Nom du relais") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(7.dp))
+                OutlinedTextField(
+                    value = relayHealthUrl,
+                    onValueChange = { relayHealthUrl = it; relayProbeResult = null },
+                    label = { Text("Adresse HTTPS /health") },
+                    placeholder = { Text("https://relay.example.com/health") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(9.dp))
+                OutlinedButton(
+                    onClick = {
+                        when (val validation = RelayEndpointValidator.validate(relayName, relayHealthUrl)) {
+                            is RelayValidation.Invalid -> {
+                                relayProbeResult = null
+                                relayProbeMessage = validation.reason
+                            }
+                            is RelayValidation.Valid -> scope.launch {
+                                relayProbeRunning = true
+                                relayProbeResult = null
+                                relayProbeMessage = "Vérification HTTPS en cours…"
+                                try {
+                                    val result = relayProbe.check(validation.endpoint)
+                                    relayProbeResult = result
+                                    relayProbeMessage = result.message
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (error: Exception) {
+                                    relayProbeMessage = "Vérification impossible : ${error.message ?: "erreur inconnue"}"
+                                } finally {
+                                    relayProbeRunning = false
+                                }
+                            }
+                        }
+                    },
+                    enabled = !relayProbeRunning,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(if (relayProbeRunning) "VÉRIFICATION…" else "VÉRIFIER LE POINT DE CONTRÔLE")
+                }
+                Text(relayProbeMessage, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                relayProbeResult?.let { result ->
+                    Spacer(Modifier.height(6.dp))
+                    MetricLine("État HTTPS", if (result.reachable) "Accessible" else "Inaccessible")
+                    MetricLine("Code HTTP", result.httpStatus?.toString() ?: "Aucune réponse")
+                    MetricLine("Temps de réponse", result.responseMs?.let { "$it ms" } ?: "Indisponible")
+                }
+                Text(
+                    "Sécurité : HTTPS uniquement, sans identifiants intégrés à l'URL. Aucun mot de passe ni jeton n'est demandé.",
+                    color = Muted, fontSize = 10.sp, lineHeight = 15.sp
+                )
             }
 
             PanelCard {
