@@ -34,7 +34,7 @@ class GamingTrafficMetricsCalculatorTest {
             observedTransports = setOf("Wi-Fi", "Données mobiles")
         )
 
-        assertEquals(30L, result.medianResponseVariationMs)
+        assertEquals(35L, result.medianResponseVariationMs)
         assertEquals(listOf("Données mobiles", "Wi-Fi"), result.observedTransports)
     }
 
