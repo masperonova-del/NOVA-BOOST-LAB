@@ -272,7 +272,7 @@ internal class OptimizerViewModel(application: Application) : AndroidViewModel(a
 
     fun optimizeProcessPath() {
         if (optimizationJob?.isActive == true) return
-        if (hasFineLocationPermission()) refreshConnectedWifi()
+        if (hasFineLocationPermission()) refreshConnectedWifi() else onWifiPermissionDenied()
         optimizationJob = viewModelScope.launch {
             _uiState.update {
                 it.copy(running = true, report = null, progress = "Recherche des chemins disponibles…")
@@ -339,6 +339,8 @@ internal class OptimizerViewModel(application: Application) : AndroidViewModel(a
                     )
                 }
                 refreshNetworkSnapshot()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 _uiState.update { it.copy(message = "Restauration impossible : ${error.message ?: "erreur inconnue"}") }
             } finally {
@@ -381,6 +383,7 @@ internal class OptimizerViewModel(application: Application) : AndroidViewModel(a
                             relayProbeMessage = "Vérification HTTPS en cours…"
                         )
                     }
+                    refreshTunnelReadiness()
                     try {
                         val result = relayProbe.check(validation.endpoint)
                         _uiState.update { it.copy(relayProbeResult = result, relayProbeMessage = result.message) }
